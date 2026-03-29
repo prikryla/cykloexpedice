@@ -34,11 +34,19 @@
                 <td class="px-4 py-3 text-gray-500">{{ e.distance or '–' }}</td>
                 <td class="px-4 py-3 text-gray-500 text-sm">{{ e.route or '–' }}</td>
                 <td class="px-4 py-3 text-right">
-                    <a href="{{ url_for('admin_etapa_edit', id=e.id) }}" class="text-blue-600 hover:underline mr-3">Upravit</a>
-                    <form method="POST" action="{{ url_for('admin_etapa_delete', id=e.id) }}" class="inline">
-                        <button type="button" class="text-red-600 hover:underline"
-                                onclick="openDeleteModal(this.closest('form'), 'Opravdu chcete smazat etapu „{{ e.title }}"?')">Smazat</button>
-                    </form>
+                    <div class="flex items-center justify-end gap-2">
+                        <a href="{{ url_for('admin_etapa_edit', id=e.id) }}"
+                           class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 text-sm font-medium rounded-lg hover:bg-blue-100 transition" title="Upravit">
+                            <i class="bi bi-pencil"></i> Upravit
+                        </a>
+                        <form method="POST" action="{{ url_for('admin_etapa_delete', id=e.id) }}" class="inline">
+                            <button type="button"
+                                    class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-700 text-sm font-medium rounded-lg hover:bg-red-100 transition"
+                                    onclick="openDeleteModal(this.closest('form'), &quot;Opravdu chcete smazat etapu {{ e.title|e }}?&quot;)">
+                                <i class="bi bi-trash3"></i> Smazat
+                            </button>
+                        </form>
+                    </div>
                 </td>
             </tr>
             {% endfor %}

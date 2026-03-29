@@ -83,22 +83,26 @@
                     </td>
                     <td class="px-4 py-3 text-gray-500 text-sm">{{ r.created_at }}</td>
                     <td class="px-4 py-3 text-right whitespace-nowrap">
-                        {% if r.status == 'pending' %}
-                        <form method="POST" action="{{ url_for('admin_registrace_approve', id=r.id) }}" class="inline">
-                            <button class="text-green-600 hover:underline font-medium mr-2" title="Schválit">
-                                <i class="bi bi-check-circle"></i> Schválit
-                            </button>
-                        </form>
-                        <a href="{{ url_for('admin_registrace_deny', id=r.id) }}" class="text-red-600 hover:underline font-medium mr-2" title="Zamítnout">
-                            <i class="bi bi-x-circle"></i> Zamítnout
-                        </a>
-                        {% endif %}
-                        <form method="POST" action="{{ url_for('admin_registrace_delete', id=r.id) }}" class="inline">
-                            <button type="button" class="text-gray-400 hover:text-red-600 hover:underline" title="Smazat"
-                                    onclick="openDeleteModal(this.closest('form'), 'Opravdu chcete smazat registraci od „{{ r.name }}"?')">
-                                <i class="bi bi-trash"></i>
-                            </button>
-                        </form>
+                        <div class="flex items-center justify-end gap-2">
+                            {% if r.status == 'pending' %}
+                            <form method="POST" action="{{ url_for('admin_registrace_approve', id=r.id) }}" class="inline">
+                                <button class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-700 text-sm font-medium rounded-lg hover:bg-green-100 transition" title="Schválit">
+                                    <i class="bi bi-check-circle"></i> Schválit
+                                </button>
+                            </form>
+                            <a href="{{ url_for('admin_registrace_deny', id=r.id) }}"
+                               class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-700 text-sm font-medium rounded-lg hover:bg-amber-100 transition" title="Zamítnout">
+                                <i class="bi bi-x-circle"></i> Zamítnout
+                            </a>
+                            {% endif %}
+                            <form method="POST" action="{{ url_for('admin_registrace_delete', id=r.id) }}" class="inline">
+                                <button type="button"
+                                        class="inline-flex items-center gap-1 px-2.5 py-1.5 bg-red-50 text-red-700 text-sm rounded-lg hover:bg-red-100 transition" title="Smazat"
+                                        onclick="openDeleteModal(this.closest('form'), &quot;Opravdu chcete smazat registraci od {{ r.name|e }}?&quot;)">
+                                    <i class="bi bi-trash3"></i>
+                                </button>
+                            </form>
+                        </div>
                     </td>
                 </tr>
                 {% endfor %}
