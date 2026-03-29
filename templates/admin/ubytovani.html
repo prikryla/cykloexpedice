@@ -32,7 +32,7 @@
                     <a href="{{ url_for('admin_ubytovani_edit', id=u.id) }}" class="text-blue-600 hover:underline mr-3">Upravit</a>
                     <form method="POST" action="{{ url_for('admin_ubytovani_delete', id=u.id) }}" class="inline">
                         <button type="button" class="text-red-600 hover:underline"
-                                @click="$dispatch('confirm-delete', { form: $el.closest('form'), message: 'Opravdu chcete smazat ubytování „{{ u.name }}"?' })">Smazat</button>
+                                onclick="openDeleteModal(this.closest('form'), 'Opravdu chcete smazat ubytování „{{ u.name }}"?')">Smazat</button>
                     </form>
                 </td>
             </tr>
