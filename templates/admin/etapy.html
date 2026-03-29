@@ -1,0 +1,54 @@
+{% extends "admin/base.html" %}
+{% block title %}Etapy{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold">Etapy</h1>
+    <a href="{{ url_for('admin_etapa_new') }}" class="px-4 py-2 bg-amber-500 text-gray-900 font-bold rounded-lg hover:bg-amber-400">
+        <i class="bi bi-plus-lg"></i> Přidat etapu
+    </a>
+</div>
+
+{% if etapy %}
+<div class="bg-white rounded-xl shadow overflow-hidden">
+    <table class="w-full">
+        <thead class="bg-gray-50 text-left text-sm text-gray-500 uppercase">
+            <tr>
+                <th class="px-4 py-3">Číslo</th>
+                <th class="px-4 py-3">Název</th>
+                <th class="px-4 py-3">Datum</th>
+                <th class="px-4 py-3">Vzdálenost</th>
+                <th class="px-4 py-3">Trasa</th>
+                <th class="px-4 py-3 text-right">Akce</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+            {% for e in etapy %}
+            <tr class="hover:bg-gray-50">
+                <td class="px-4 py-3">
+                    <span class="inline-block w-8 h-8 rounded-full text-center leading-8 text-white font-bold text-sm"
+                          style="background-color: {{ e.color }}">{{ e.number }}</span>
+                </td>
+                <td class="px-4 py-3 font-medium">{{ e.title }}</td>
+                <td class="px-4 py-3 text-gray-500">{{ e.date or '–' }}</td>
+                <td class="px-4 py-3 text-gray-500">{{ e.distance or '–' }}</td>
+                <td class="px-4 py-3 text-gray-500 text-sm">{{ e.route or '–' }}</td>
+                <td class="px-4 py-3 text-right">
+                    <a href="{{ url_for('admin_etapa_edit', id=e.id) }}" class="text-blue-600 hover:underline mr-3">Upravit</a>
+                    <form method="POST" action="{{ url_for('admin_etapa_delete', id=e.id) }}" class="inline"
+                          onsubmit="return confirm('Opravdu smazat?')">
+                        <button class="text-red-600 hover:underline">Smazat</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="bg-white rounded-xl shadow p-12 text-center text-gray-500">
+    <i class="bi bi-bicycle text-4xl mb-3 block"></i>
+    <p>Zatím žádné etapy. Přidejte první!</p>
+</div>
+{% endif %}
+{% endblock %}

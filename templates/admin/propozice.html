@@ -1,0 +1,33 @@
+{% extends "admin/base.html" %}
+{% block title %}Propozice{% endblock %}
+
+{% block head_extra %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    tinymce.init({
+        selector: '#content-editor',
+        height: 500,
+        menubar: true,
+        plugins: 'lists link image table code fullscreen preview',
+        toolbar: 'undo redo | blocks bold italic underline | bullist numlist | link image table | alignleft aligncenter alignright | code fullscreen',
+        skin_url: 'https://cdn.jsdelivr.net/npm/tinymce@6/skins/ui/oxide',
+        content_css: 'https://cdn.jsdelivr.net/npm/tinymce@6/skins/content/default/content.min.css',
+        content_style: 'body { font-family: sans-serif; font-size: 16px; }',
+    });
+});
+</script>
+{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold mb-6">Propozice</h1>
+
+<form method="POST" class="space-y-6">
+    <div class="bg-white rounded-xl shadow p-6">
+        <p class="text-sm text-gray-500 mb-4">Obsah propozic. Tento obsah se zobrazí na stránce Propozice.</p>
+        <textarea name="content" id="content-editor">{{ content }}</textarea>
+    </div>
+    <button type="submit" class="px-6 py-3 bg-amber-500 text-gray-900 font-bold rounded-lg hover:bg-amber-400">
+        Uložit propozice
+    </button>
+</form>
+{% endblock %}

@@ -1,0 +1,57 @@
+{% extends "admin/base.html" %}
+{% block title %}{{ 'Upravit aktualitu' if item else 'Nová aktualita' }}{% endblock %}
+
+{% block head_extra %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    tinymce.init({
+        selector: '#content-editor',
+        height: 400,
+        menubar: true,
+        plugins: 'lists link image table code fullscreen preview',
+        toolbar: 'undo redo | blocks bold italic underline | bullist numlist | link image table | alignleft aligncenter alignright | code fullscreen',
+        skin_url: 'https://cdn.jsdelivr.net/npm/tinymce@6/skins/ui/oxide',
+        content_css: 'https://cdn.jsdelivr.net/npm/tinymce@6/skins/content/default/content.min.css',
+        content_style: 'body { font-family: sans-serif; font-size: 16px; }',
+    });
+});
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="flex items-center gap-4 mb-6">
+    <a href="{{ url_for('admin_aktuality') }}" class="text-gray-500 hover:text-gray-700"><i class="bi bi-arrow-left"></i></a>
+    <h1 class="text-2xl font-bold">{{ 'Upravit aktualitu' if item else 'Nová aktualita' }}</h1>
+</div>
+
+<form method="POST" class="space-y-6">
+    <div class="bg-white rounded-xl shadow p-6 space-y-4">
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Nadpis *</label>
+            <input type="text" name="title" required value="{{ item.title if item else '' }}"
+                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500">
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Obsah</label>
+            <textarea name="content" id="content-editor">{{ item.content if item else '' }}</textarea>
+        </div>
+        <div>
+            <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" name="published" value="1"
+                       {% if not item or item.published %}checked{% endif %}
+                       class="w-5 h-5 rounded border-gray-300 text-amber-500 focus:ring-amber-500">
+                <span class="text-sm font-medium text-gray-700">Publikovat</span>
+            </label>
+        </div>
+    </div>
+
+    <div class="flex gap-3">
+        <button type="submit" class="px-6 py-3 bg-blue-500 text-white font-bold rounded-lg hover:bg-blue-400">
+            Uložit aktualitu
+        </button>
+        <a href="{{ url_for('admin_aktuality') }}" class="px-6 py-3 bg-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-300">
+            Zrušit
+        </a>
+    </div>
+</form>
+{% endblock %}

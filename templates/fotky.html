@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Fotky – Cykloexpedice {{ settings.event_year }}{% endblock %}
+
+{% block content %}
+<section class="bg-dark-900 py-16 md:py-20 relative overflow-hidden">
+    <div class="relative max-w-6xl mx-auto px-4 text-center">
+        <p class="text-olive-500 font-semibold text-sm uppercase tracking-[0.15em] mb-3">Vzpomínky z cest</p>
+        <h1 class="font-display text-5xl md:text-6xl text-white tracking-wide">FOTKY</h1>
+        <div class="section-divider mx-auto mt-4"></div>
+    </div>
+</section>
+
+<section class="py-20 md:py-28">
+    <div class="max-w-3xl mx-auto px-4 text-center">
+        <div class="bg-white rounded-2xl shadow-md p-12 md:p-16 card-hover">
+            <div class="w-20 h-20 rounded-full bg-olive-500/10 flex items-center justify-center mx-auto mb-8">
+                <i class="bi bi-camera text-3xl text-olive-500"></i>
+            </div>
+            <h2 class="font-display text-3xl text-dark-900 tracking-wide mb-4">
+                FOTOGRAFIE ZE {{ settings.event_name|upper }} {{ settings.event_year }}
+            </h2>
+            <div class="section-divider mx-auto mb-6"></div>
+            <p class="text-gray-500 leading-relaxed mb-10 max-w-lg mx-auto">{{ settings.photos_text }}</p>
+            {% if settings.photos_link %}
+            <a href="{{ settings.photos_link }}" target="_blank" class="btn-olive text-base !px-10 !py-4">
+                <i class="bi bi-images mr-2"></i> Prohlédnout / Nahrát fotografie
+            </a>
+            {% endif %}
+        </div>
+    </div>
+</section>
+{% endblock %}

@@ -1,0 +1,53 @@
+{% extends "admin/base.html" %}
+{% block title %}Aktuality{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold">Aktuality</h1>
+    <a href="{{ url_for('admin_aktualita_new') }}" class="px-4 py-2 bg-blue-500 text-white font-bold rounded-lg hover:bg-blue-400">
+        <i class="bi bi-plus-lg"></i> Přidat aktualitu
+    </a>
+</div>
+
+{% if aktuality %}
+<div class="bg-white rounded-xl shadow overflow-hidden">
+    <table class="w-full">
+        <thead class="bg-gray-50 text-left text-sm text-gray-500 uppercase">
+            <tr>
+                <th class="px-4 py-3">Název</th>
+                <th class="px-4 py-3">Datum</th>
+                <th class="px-4 py-3">Stav</th>
+                <th class="px-4 py-3 text-right">Akce</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+            {% for a in aktuality %}
+            <tr class="hover:bg-gray-50">
+                <td class="px-4 py-3 font-medium">{{ a.title }}</td>
+                <td class="px-4 py-3 text-gray-500 text-sm">{{ a.created_at }}</td>
+                <td class="px-4 py-3">
+                    {% if a.published %}
+                    <span class="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full font-medium">Publikováno</span>
+                    {% else %}
+                    <span class="px-2 py-1 bg-gray-100 text-gray-500 text-xs rounded-full font-medium">Skryto</span>
+                    {% endif %}
+                </td>
+                <td class="px-4 py-3 text-right">
+                    <a href="{{ url_for('admin_aktualita_edit', id=a.id) }}" class="text-blue-600 hover:underline mr-3">Upravit</a>
+                    <form method="POST" action="{{ url_for('admin_aktualita_delete', id=a.id) }}" class="inline"
+                          onsubmit="return confirm('Opravdu smazat?')">
+                        <button class="text-red-600 hover:underline">Smazat</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="bg-white rounded-xl shadow p-12 text-center text-gray-500">
+    <i class="bi bi-newspaper text-4xl mb-3 block"></i>
+    <p>Zatím žádné aktuality.</p>
+</div>
+{% endif %}
+{% endblock %}

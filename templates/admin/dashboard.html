@@ -1,0 +1,43 @@
+{% extends "admin/base.html" %}
+{% block title %}Přehled{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold mb-6">Přehled</h1>
+
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+    <a href="{{ url_for('admin_etapy') }}" class="bg-white rounded-xl p-6 shadow hover:shadow-lg transition">
+        <div class="text-3xl font-bold text-amber-500">{{ stats.etapy }}</div>
+        <div class="text-gray-500 mt-1"><i class="bi bi-bicycle"></i> Etapy</div>
+    </a>
+    <a href="{{ url_for('admin_aktuality') }}" class="bg-white rounded-xl p-6 shadow hover:shadow-lg transition">
+        <div class="text-3xl font-bold text-blue-500">{{ stats.aktuality }}</div>
+        <div class="text-gray-500 mt-1"><i class="bi bi-newspaper"></i> Aktuality</div>
+    </a>
+    <a href="{{ url_for('admin_registrace') }}" class="bg-white rounded-xl p-6 shadow hover:shadow-lg transition">
+        <div class="text-3xl font-bold text-green-500">{{ stats.registrace }}</div>
+        <div class="text-gray-500 mt-1"><i class="bi bi-people"></i> Registrace</div>
+    </a>
+    <a href="{{ url_for('admin_ubytovani') }}" class="bg-white rounded-xl p-6 shadow hover:shadow-lg transition">
+        <div class="text-3xl font-bold text-purple-500">{{ stats.ubytovani }}</div>
+        <div class="text-gray-500 mt-1"><i class="bi bi-house-door"></i> Ubytování</div>
+    </a>
+</div>
+
+<div class="bg-white rounded-xl p-6 shadow">
+    <h2 class="font-bold mb-4">Rychlé akce</h2>
+    <div class="flex flex-wrap gap-3">
+        <a href="{{ url_for('admin_etapa_new') }}" class="px-4 py-2 bg-amber-500 text-gray-900 font-medium rounded-lg hover:bg-amber-400">
+            <i class="bi bi-plus-lg"></i> Nová etapa
+        </a>
+        <a href="{{ url_for('admin_aktualita_new') }}" class="px-4 py-2 bg-blue-500 text-white font-medium rounded-lg hover:bg-blue-400">
+            <i class="bi bi-plus-lg"></i> Nová aktualita
+        </a>
+        <a href="{{ url_for('admin_ubytovani_new') }}" class="px-4 py-2 bg-purple-500 text-white font-medium rounded-lg hover:bg-purple-400">
+            <i class="bi bi-plus-lg"></i> Nové ubytování
+        </a>
+        <a href="{{ url_for('admin_settings') }}" class="px-4 py-2 bg-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-300">
+            <i class="bi bi-sliders"></i> Nastavení webu
+        </a>
+    </div>
+</div>
+{% endblock %}

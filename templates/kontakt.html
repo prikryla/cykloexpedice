@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Kontakt – Cykloexpedice {{ settings.event_year }}{% endblock %}
+
+{% block content %}
+<section class="bg-dark-900 py-20 md:py-32 relative overflow-hidden">
+    <div class="absolute inset-0 opacity-10"
+         style="background-image: url('https://images.unsplash.com/photo-1541625602330-2277a4c46182?w=1920&q=80'); background-size: cover; background-position: center;"></div>
+    <div class="relative max-w-4xl mx-auto px-4 text-center text-white">
+        <p class="text-olive-500 font-semibold text-sm uppercase tracking-[0.15em] mb-3">Ozvěte se nám</p>
+        <h1 class="font-display text-5xl md:text-7xl tracking-wide mb-4">KONTAKT</h1>
+        <div class="section-divider mx-auto mb-10"></div>
+
+        <div class="grid md:grid-cols-2 gap-8 max-w-lg mx-auto">
+            <div class="bg-white/5 backdrop-blur rounded-2xl p-8 border border-white/10">
+                <div class="w-14 h-14 rounded-full bg-gold-500/10 flex items-center justify-center mx-auto mb-4">
+                    <i class="bi bi-person text-xl text-gold-500"></i>
+                </div>
+                <p class="font-display text-xl tracking-wide">{{ settings.contact_name_1|upper }}</p>
+            </div>
+            <div class="bg-white/5 backdrop-blur rounded-2xl p-8 border border-white/10">
+                <div class="w-14 h-14 rounded-full bg-gold-500/10 flex items-center justify-center mx-auto mb-4">
+                    <i class="bi bi-person text-xl text-gold-500"></i>
+                </div>
+                <p class="font-display text-xl tracking-wide">{{ settings.contact_name_2|upper }}</p>
+            </div>
+        </div>
+
+        <div class="mt-10">
+            <a href="mailto:{{ settings.contact_email }}" class="btn-gold text-lg !px-10 !py-4">
+                <i class="bi bi-envelope mr-2"></i> {{ settings.contact_email }}
+            </a>
+        </div>
+    </div>
+</section>
+{% endblock %}

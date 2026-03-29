@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block title %}{{ settings.event_name }} {{ settings.event_year }}{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<section class="relative bg-dark-900 hero-clip overflow-hidden">
+    <video class="absolute inset-0 w-full h-full object-cover opacity-30"
+           autoplay muted loop playsinline
+           src="{{ url_for('static', filename='hero-video.mp4') }}"></video>
+    <div class="absolute inset-0 bg-gradient-to-br from-dark-900/95 via-dark-900/70 to-dark-900/50"></div>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            var v = document.querySelector('section video');
+            if (v) v.playbackRate = 0.4;
+        });
+    </script>
+    <div class="relative max-w-6xl mx-auto px-4 py-24 md:py-36 lg:py-44 text-center">
+        <p class="text-olive-500 font-semibold text-sm uppercase tracking-[0.2em] mb-4">Na kolech po české krajině</p>
+        <h1 class="font-display text-5xl md:text-7xl lg:text-8xl text-white tracking-wide mb-6 leading-tight">
+            {{ settings.event_name }}<br>
+            <span class="text-gold-500">{{ settings.event_year }}</span>
+        </h1>
+
+        <div class="flex flex-wrap justify-center gap-6 md:gap-10 text-white mb-10">
+            <div class="text-center">
+                <div class="font-display text-4xl md:text-5xl text-gold-500">{{ settings.event_days }}</div>
+                <div class="text-xs uppercase tracking-wider text-gray-400 mt-1">dny</div>
+            </div>
+            <div class="w-px bg-white/20 hidden md:block"></div>
+            <div class="text-center">
+                <div class="font-display text-4xl md:text-5xl text-gold-500">{{ settings.event_km }}</div>
+                <div class="text-xs uppercase tracking-wider text-gray-400 mt-1">kilometrů</div>
+            </div>
+            <div class="w-px bg-white/20 hidden md:block"></div>
+            <div class="text-center">
+                <div class="font-display text-4xl md:text-5xl text-gold-500">{{ settings.event_elevation }}</div>
+                <div class="text-xs uppercase tracking-wider text-gray-400 mt-1">nastoupaných metrů</div>
+            </div>
+        </div>
+
+        <p class="text-xl md:text-2xl text-gray-300 mb-10">{{ settings.event_dates }}</p>
+
+        <div class="flex flex-wrap justify-center gap-4">
+            <a href="{{ url_for('registrace') }}" class="btn-gold text-base !px-10 !py-4">
+                <i class="bi bi-bicycle mr-2"></i> Přihlásit se
+            </a>
+            <a href="{{ url_for('propozice') }}" class="btn-outline text-base !px-10 !py-4">
+                Propozice
+            </a>
+        </div>
+    </div>
+</section>
+
+<!-- Etapy Section -->
+{% if etapy_nav %}
+<section class="py-20 md:py-28 bg-cream-50">
+    <div class="max-w-6xl mx-auto px-4">
+        <div class="text-center mb-14">
+            <p class="text-olive-500 font-semibold text-sm uppercase tracking-[0.15em] mb-3">Naše trasa</p>
+            <h2 class="font-display text-4xl md:text-5xl text-dark-900 tracking-wide">ETAPY EXPEDICE</h2>
+            <div class="section-divider mx-auto mt-4"></div>
+        </div>
+
+        <div class="grid md:grid-cols-{{ etapy_nav|length }} gap-8">
+            {% for e in etapy_nav %}
+            <a href="{{ url_for('etapa', number=e.number) }}"
+               class="card-hover bg-white rounded-2xl overflow-hidden shadow-md group">
+                <div class="h-48 bg-gradient-to-br from-dark-900 to-dark-800 flex items-center justify-center relative overflow-hidden">
+                    <div class="absolute inset-0 bg-gold-500/10 group-hover:bg-gold-500/20 transition-all duration-500"></div>
+                    <div class="relative text-center">
+                        <i class="bi bi-bicycle text-5xl text-gold-500 group-hover:scale-110 transition-transform duration-500 inline-block"></i>
+                        <div class="font-display text-6xl text-white/10 absolute -top-4 -right-8">{{ e.number }}</div>
+                    </div>
+                </div>
+                <div class="p-6 text-center">
+                    <h3 class="font-display text-2xl text-dark-900 tracking-wide">{{ e.title|upper }}</h3>
+                    <div class="section-divider mx-auto mt-3"></div>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+{% endif %}
+
+<!-- About / CTA Section -->
+<section class="py-20 bg-dark-900 text-white relative overflow-hidden">
+    <div class="absolute inset-0 opacity-5"
+         style="background-image: url('https://images.unsplash.com/photo-1507035895480-2b3156c31fc8?w=1920&q=80'); background-size: cover; background-position: center;"></div>
+    <div class="relative max-w-4xl mx-auto px-4 text-center">
+        <p class="text-olive-500 font-semibold text-sm uppercase tracking-[0.15em] mb-3">Připojte se k nám</p>
+        <h2 class="font-display text-4xl md:text-5xl tracking-wide mb-6">ZAŽIJTE DOBRODRUŽSTVÍ</h2>
+        <div class="section-divider mx-auto mb-8"></div>
+        <p class="text-lg text-gray-300 leading-relaxed mb-10 max-w-2xl mx-auto">
+            Každoročně organizujeme vícedenní cykloexpedici po nejkrásnějších místech České republiky.
+            Přidejte se k partě nadšených cyklistů a objevujte s námi historická města, malebnou krajinu
+            a zapomenuté kouty naší země.
+        </p>
+        <div class="flex flex-wrap justify-center gap-4">
+            <a href="{{ url_for('registrace') }}" class="btn-olive text-base !px-10 !py-4">
+                Chci jet s vámi
+            </a>
+            <a href="{{ url_for('kontakt') }}" class="btn-outline text-base !px-10 !py-4">
+                Kontaktujte nás
+            </a>
+        </div>
+    </div>
+</section>
+
+<!-- Quick Info Cards -->
+<section class="py-20 bg-cream-100">
+    <div class="max-w-6xl mx-auto px-4">
+        <div class="grid md:grid-cols-{{ 3 if settings.fotky_enabled == '1' else 2 }} gap-8">
+            <div class="bg-white rounded-2xl p-8 text-center card-hover shadow-sm">
+                <div class="w-16 h-16 rounded-full bg-gold-500/10 flex items-center justify-center mx-auto mb-5">
+                    <i class="bi bi-map text-2xl text-gold-500"></i>
+                </div>
+                <h3 class="font-display text-xl tracking-wide mb-3">PROPOZICE</h3>
+                <p class="text-gray-500 text-sm leading-relaxed mb-5">Termíny, ceny, informace o odjezdu a vše potřebné pro expedici.</p>
+                <a href="{{ url_for('propozice') }}" class="text-gold-600 font-semibold text-sm hover:text-gold-500 transition">
+                    Zjistit více <i class="bi bi-arrow-right"></i>
+                </a>
+            </div>
+            <div class="bg-white rounded-2xl p-8 text-center card-hover shadow-sm">
+                <div class="w-16 h-16 rounded-full bg-olive-500/10 flex items-center justify-center mx-auto mb-5">
+                    <i class="bi bi-house-door text-2xl text-olive-500"></i>
+                </div>
+                <h3 class="font-display text-xl tracking-wide mb-3">UBYTOVÁNÍ</h3>
+                <p class="text-gray-500 text-sm leading-relaxed mb-5">Přehled ubytování na trase, informace o pokojích a stravování.</p>
+                <a href="{{ url_for('ubytovani') }}" class="text-olive-600 font-semibold text-sm hover:text-olive-500 transition">
+                    Zjistit více <i class="bi bi-arrow-right"></i>
+                </a>
+            </div>
+            {% if settings.fotky_enabled == '1' %}
+            <div class="bg-white rounded-2xl p-8 text-center card-hover shadow-sm">
+                <div class="w-16 h-16 rounded-full bg-gold-500/10 flex items-center justify-center mx-auto mb-5">
+                    <i class="bi bi-camera text-2xl text-gold-500"></i>
+                </div>
+                <h3 class="font-display text-xl tracking-wide mb-3">FOTKY</h3>
+                <p class="text-gray-500 text-sm leading-relaxed mb-5">Prohlédněte si fotografie z minulých expedic a sdílejte ty vaše.</p>
+                <a href="{{ url_for('fotky') }}" class="text-gold-600 font-semibold text-sm hover:text-gold-500 transition">
+                    Prohlédnout <i class="bi bi-arrow-right"></i>
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</section>
+{% endblock %}

@@ -1,0 +1,49 @@
+{% extends "admin/base.html" %}
+{% block title %}Ubytování{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold">Ubytování</h1>
+    <a href="{{ url_for('admin_ubytovani_new') }}" class="px-4 py-2 bg-amber-500 text-gray-900 font-bold rounded-lg hover:bg-amber-400">
+        <i class="bi bi-plus-lg"></i> Přidat ubytování
+    </a>
+</div>
+
+{% if ubytovani %}
+<div class="bg-white rounded-xl shadow overflow-hidden">
+    <table class="w-full">
+        <thead class="bg-gray-50 text-left text-sm text-gray-500 uppercase">
+            <tr>
+                <th class="px-4 py-3">Název</th>
+                <th class="px-4 py-3">Město</th>
+                <th class="px-4 py-3">Datum</th>
+                <th class="px-4 py-3">Po etapě</th>
+                <th class="px-4 py-3 text-right">Akce</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+            {% for u in ubytovani %}
+            <tr class="hover:bg-gray-50">
+                <td class="px-4 py-3 font-medium">{{ u.name }}</td>
+                <td class="px-4 py-3 text-gray-500">{{ u.city or '–' }}</td>
+                <td class="px-4 py-3 text-gray-500">{{ u.date or '–' }}</td>
+                <td class="px-4 py-3 text-gray-500">{{ u.etapa_number or '–' }}</td>
+                <td class="px-4 py-3 text-right">
+                    <a href="{{ url_for('admin_ubytovani_edit', id=u.id) }}" class="text-blue-600 hover:underline mr-3">Upravit</a>
+                    <form method="POST" action="{{ url_for('admin_ubytovani_delete', id=u.id) }}" class="inline"
+                          onsubmit="return confirm('Opravdu smazat?')">
+                        <button class="text-red-600 hover:underline">Smazat</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="bg-white rounded-xl shadow p-12 text-center text-gray-500">
+    <i class="bi bi-house-door text-4xl mb-3 block"></i>
+    <p>Zatím žádné ubytování.</p>
+</div>
+{% endif %}
+{% endblock %}

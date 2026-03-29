@@ -1,0 +1,93 @@
+{% extends "admin/base.html" %}
+{% block title %}Nastavení{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold mb-6">Nastavení webu</h1>
+
+<form method="POST" class="space-y-6">
+    <div class="bg-white rounded-xl shadow p-6">
+        <h2 class="font-bold mb-4">Hlavní stránka</h2>
+        <div class="grid md:grid-cols-2 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Název akce</label>
+                <input type="text" name="event_name" value="{{ settings.event_name }}"
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Rok</label>
+                <input type="text" name="event_year" value="{{ settings.event_year }}"
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Počet dní</label>
+                <input type="text" name="event_days" value="{{ settings.event_days }}"
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Celkem km</label>
+                <input type="text" name="event_km" value="{{ settings.event_km }}"
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Nastoupané metry</label>
+                <input type="text" name="event_elevation" value="{{ settings.event_elevation }}"
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Termín (zobrazený text)</label>
+                <input type="text" name="event_dates" value="{{ settings.event_dates }}"
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500">
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-xl shadow p-6">
+        <h2 class="font-bold mb-4">Kontakt</h2>
+        <div class="grid md:grid-cols-2 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Jméno 1</label>
+                <input type="text" name="contact_name_1" value="{{ settings.contact_name_1 }}"
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Jméno 2</label>
+                <input type="text" name="contact_name_2" value="{{ settings.contact_name_2 }}"
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500">
+            </div>
+            <div class="md:col-span-2">
+                <label class="block text-sm font-medium text-gray-700 mb-1">E-mail</label>
+                <input type="email" name="contact_email" value="{{ settings.contact_email }}"
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500">
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-xl shadow p-6">
+        <h2 class="font-bold mb-4">Fotky</h2>
+        <div class="space-y-4">
+            <div class="flex items-center gap-3">
+                <input type="checkbox" name="fotky_enabled" id="fotky_enabled" value="1"
+                       {% if settings.fotky_enabled == '1' %}checked{% endif %}
+                       class="w-5 h-5 rounded border-gray-300 text-amber-500 focus:ring-amber-500">
+                <label for="fotky_enabled" class="text-sm font-medium text-gray-700">
+                    Zobrazit stránku Fotky na webu
+                </label>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Odkaz na fotogalerii</label>
+                <input type="url" name="photos_link" value="{{ settings.photos_link }}"
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Text u fotek</label>
+                <textarea name="photos_text" rows="3"
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500">{{ settings.photos_text }}</textarea>
+            </div>
+        </div>
+    </div>
+
+    <button type="submit" class="px-6 py-3 bg-amber-500 text-gray-900 font-bold rounded-lg hover:bg-amber-400">
+        Uložit nastavení
+    </button>
+</form>
+{% endblock %}

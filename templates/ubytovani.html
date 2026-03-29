@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Ubytování – Cykloexpedice {{ settings.event_year }}{% endblock %}
+
+{% block content %}
+<section class="bg-dark-900 py-16 md:py-20 relative overflow-hidden">
+    <div class="absolute inset-0 opacity-10"
+         style="background-image: url('https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=1920&q=80'); background-size: cover; background-position: center;"></div>
+    <div class="relative max-w-6xl mx-auto px-4 text-center">
+        <p class="text-olive-500 font-semibold text-sm uppercase tracking-[0.15em] mb-3">Kde budeme spát</p>
+        <h1 class="font-display text-5xl md:text-6xl text-white tracking-wide">UBYTOVÁNÍ</h1>
+        <div class="section-divider mx-auto mt-4"></div>
+    </div>
+</section>
+
+<section class="py-16 md:py-20">
+    <div class="max-w-6xl mx-auto px-4">
+        <div class="grid md:grid-cols-2 gap-8">
+            {% for u in ubytovani %}
+            <div class="bg-white rounded-2xl shadow-md overflow-hidden card-hover">
+                <div class="h-2 bg-gold-500"></div>
+                <div class="p-8">
+                    <div class="flex items-center gap-3 mb-6">
+                        <div class="w-12 h-12 rounded-full bg-gold-500/10 flex items-center justify-center">
+                            <i class="bi bi-house-door text-xl text-gold-500"></i>
+                        </div>
+                        <div>
+                            <h2 class="font-display text-2xl text-dark-900 tracking-wide">{{ u.name|upper }}</h2>
+                            {% if u.city %}<p class="text-gray-500 text-sm">{{ u.city }}</p>{% endif %}
+                        </div>
+                    </div>
+
+                    <div class="space-y-4 text-gray-600 text-sm">
+                        {% if u.date %}
+                        <div class="flex items-start gap-3">
+                            <i class="bi bi-calendar3 text-gold-500 mt-0.5"></i>
+                            <div><span class="font-semibold text-dark-900">Datum:</span> {{ u.date }}</div>
+                        </div>
+                        {% endif %}
+                        {% if u.rooms_info %}
+                        <div class="flex items-start gap-3">
+                            <i class="bi bi-door-open text-gold-500 mt-0.5"></i>
+                            <div><span class="font-semibold text-dark-900">Pokoje:</span> {{ u.rooms_info }}</div>
+                        </div>
+                        {% endif %}
+                        {% if u.food_info %}
+                        <div class="flex items-start gap-3">
+                            <i class="bi bi-cup-hot text-gold-500 mt-0.5"></i>
+                            <div><span class="font-semibold text-dark-900">Stravování:</span> {{ u.food_info|safe }}</div>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    {% if u.link %}
+                    <div class="mt-6 pt-6 border-t border-gray-100 text-center">
+                        <a href="{{ u.link }}" target="_blank" class="btn-gold !py-3 !px-8 !text-xs">
+                            <i class="bi bi-box-arrow-up-right mr-1"></i> Web ubytování
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% else %}
+            <div class="md:col-span-2 text-center py-20">
+                <div class="w-20 h-20 rounded-full bg-gold-500/10 flex items-center justify-center mx-auto mb-6">
+                    <i class="bi bi-house-door text-3xl text-gold-500"></i>
+                </div>
+                <h3 class="font-display text-2xl text-dark-900 tracking-wide">UBYTOVÁNÍ ZATÍM NEBYLO PŘIDÁNO</h3>
+                <p class="text-gray-500 mt-2">Informace o ubytování na trase budou brzy doplněny.</p>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+{% endblock %}

@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% block title %}{{ etapa.title }} – Cykloexpedice {{ settings.event_year }}{% endblock %}
+
+{% block content %}
+<!-- Page Header -->
+<section class="bg-dark-900 py-16 md:py-20 relative overflow-hidden">
+    <div class="absolute inset-0 opacity-10"
+         style="background-image: url('https://images.unsplash.com/photo-1541625602330-2277a4c46182?w=1920&q=80'); background-size: cover; background-position: center;"></div>
+    <div class="relative max-w-6xl mx-auto px-4">
+        <div class="flex items-center justify-between">
+            <div class="text-center md:text-left">
+                <p class="text-olive-500 font-semibold text-sm uppercase tracking-[0.15em] mb-3">Etapa {{ etapa.number }}</p>
+                <h1 class="font-display text-4xl md:text-6xl text-white tracking-wide">{{ etapa.title|upper }}</h1>
+                <div class="section-divider mt-4" style="background-color: {{ etapa.color }}"></div>
+            </div>
+            <div class="hidden md:flex gap-3">
+                {% if prev_etapa %}
+                <a href="{{ url_for('etapa', number=prev_etapa.number) }}"
+                   class="w-12 h-12 rounded-full border-2 border-white/20 flex items-center justify-center text-white/60 hover:border-gold-500 hover:text-gold-500 transition">
+                    <i class="bi bi-arrow-left"></i>
+                </a>
+                {% endif %}
+                {% if next_etapa %}
+                <a href="{{ url_for('etapa', number=next_etapa.number) }}"
+                   class="w-12 h-12 rounded-full border-2 border-white/20 flex items-center justify-center text-white/60 hover:border-gold-500 hover:text-gold-500 transition">
+                    <i class="bi bi-arrow-right"></i>
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="py-16 md:py-20">
+    <div class="max-w-6xl mx-auto px-4">
+        <!-- Info Card -->
+        <div class="bg-white rounded-2xl shadow-md overflow-hidden mb-10">
+            <div class="h-2" style="background-color: {{ etapa.color }}"></div>
+            <div class="p-8 md:p-10">
+                <div class="grid md:grid-cols-2 gap-8">
+                    <div class="space-y-5">
+                        {% if etapa.date %}
+                        <div class="flex items-start gap-4">
+                            <div class="w-10 h-10 rounded-full bg-gold-500/10 flex items-center justify-center shrink-0 mt-0.5">
+                                <i class="bi bi-calendar3 text-gold-500"></i>
+                            </div>
+                            <div><span class="font-semibold text-dark-900">Termín</span><br><span class="text-gray-600">{{ etapa.date }}</span></div>
+                        </div>
+                        {% endif %}
+                        {% if etapa.distance %}
+                        <div class="flex items-start gap-4">
+                            <div class="w-10 h-10 rounded-full bg-olive-500/10 flex items-center justify-center shrink-0 mt-0.5">
+                                <i class="bi bi-arrow-right-circle text-olive-500"></i>
+                            </div>
+                            <div><span class="font-semibold text-dark-900">Délka</span><br><span class="text-gray-600">{{ etapa.distance }}</span></div>
+                        </div>
+                        {% endif %}
+                        {% if etapa.elevation_up or etapa.elevation_down %}
+                        <div class="flex items-start gap-4">
+                            <div class="w-10 h-10 rounded-full bg-gold-500/10 flex items-center justify-center shrink-0 mt-0.5">
+                                <i class="bi bi-arrow-down-up text-gold-500"></i>
+                            </div>
+                            <div>
+                                <span class="font-semibold text-dark-900">Převýšení</span><br>
+                                <span class="text-gray-600">
+                                    {% if etapa.elevation_up %}<i class="bi bi-arrow-up text-olive-500"></i> {{ etapa.elevation_up }}{% endif %}
+                                    {% if etapa.elevation_down %} &nbsp; <i class="bi bi-arrow-down text-red-400"></i> {{ etapa.elevation_down }}{% endif %}
+                                </span>
+                            </div>
+                        </div>
+                        {% endif %}
+                        {% if etapa.route %}
+                        <div class="flex items-start gap-4">
+                            <div class="w-10 h-10 rounded-full bg-olive-500/10 flex items-center justify-center shrink-0 mt-0.5">
+                                <i class="bi bi-compass text-olive-500"></i>
+                            </div>
+                            <div><span class="font-semibold text-dark-900">Trasa</span><br><span class="text-gray-600">{{ etapa.route }}</span></div>
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div>
+                        {% if etapa.waypoints %}
+                        <div class="flex gap-4">
+                            <div class="w-10 h-10 rounded-full bg-gold-500/10 flex items-center justify-center shrink-0 mt-0.5">
+                                <i class="bi bi-map text-gold-500"></i>
+                            </div>
+                            <div>
+                                <span class="font-semibold text-dark-900">Hlavní body na trase</span>
+                                <p class="text-gray-600 mt-1 leading-relaxed">{{ etapa.waypoints }}</p>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Downloads -->
+                {% if etapa.map_link or etapa.map_download or etapa.qr_image or etapa.gpx_file %}
+                <div class="mt-8 pt-8 border-t border-gray-100">
+                    <div class="flex flex-wrap gap-4 justify-center">
+                        {% if etapa.map_link %}
+                        <a href="{{ etapa.map_link }}" target="_blank" class="btn-gold !py-3 !px-6 !text-xs">
+                            <i class="bi bi-geo-alt mr-1"></i> Mapa na mapy.cz
+                        </a>
+                        {% endif %}
+                        {% if etapa.map_download %}
+                        <a href="{{ url_for('static', filename='uploads/' + etapa.map_download) }}" download class="btn-outline !py-3 !px-6 !text-xs !text-dark-900 !border-dark-900/20 hover:!bg-dark-900 hover:!text-white">
+                            <i class="bi bi-book mr-1"></i> Mapa do kapsy
+                        </a>
+                        {% endif %}
+                        {% if etapa.qr_image %}
+                        <a href="{{ url_for('static', filename='uploads/' + etapa.qr_image) }}" download class="btn-outline !py-3 !px-6 !text-xs !text-dark-900 !border-dark-900/20 hover:!bg-dark-900 hover:!text-white">
+                            <i class="bi bi-qr-code mr-1"></i> QR kód
+                        </a>
+                        {% endif %}
+                        {% if etapa.gpx_file %}
+                        <a href="{{ url_for('static', filename='uploads/' + etapa.gpx_file) }}" download class="btn-olive !py-3 !px-6 !text-xs">
+                            <i class="bi bi-download mr-1"></i> GPX soubor
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Elevation profile -->
+        {% if etapa.profile_image %}
+        <div class="bg-white rounded-2xl shadow-md p-6 md:p-8 mb-10">
+            <h3 class="font-display text-2xl text-dark-900 tracking-wide mb-5">VÝŠKOVÝ PROFIL</h3>
+            <img src="{{ url_for('static', filename='uploads/' + etapa.profile_image) }}"
+                 alt="Výškový profil" class="w-full rounded-xl">
+        </div>
+        {% endif %}
+
+        <!-- Description -->
+        {% if etapa.description %}
+        <div class="bg-dark-900 text-white rounded-2xl shadow-md p-8 md:p-12 mb-10">
+            <p class="text-olive-500 font-semibold text-sm uppercase tracking-[0.15em] mb-3">Kudy povedou</p>
+            <h2 class="font-display text-3xl md:text-4xl tracking-wide mb-6">POPIS TRASY</h2>
+            <div class="section-divider mb-8"></div>
+            <div class="prose prose-lg prose-invert max-w-none prose-p:text-gray-300 prose-p:leading-relaxed">
+                {{ etapa.description|safe }}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- YouTube -->
+        {% if youtube %}
+        <div class="grid md:grid-cols-2 gap-6">
+            {% for url in youtube %}
+            <div class="bg-white rounded-2xl shadow-md overflow-hidden card-hover">
+                <iframe src="{{ url }}" class="w-full aspect-video" allowfullscreen></iframe>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Navigation between etapy (mobile) -->
+        <div class="flex justify-between mt-10 md:hidden">
+            {% if prev_etapa %}
+            <a href="{{ url_for('etapa', number=prev_etapa.number) }}" class="btn-outline !py-3 !px-6">
+                <i class="bi bi-arrow-left mr-1"></i> Předchozí
+            </a>
+            {% else %}<div></div>{% endif %}
+            {% if next_etapa %}
+            <a href="{{ url_for('etapa', number=next_etapa.number) }}" class="btn-gold !py-3 !px-6">
+                Další <i class="bi bi-arrow-right ml-1"></i>
+            </a>
+            {% endif %}
+        </div>
+    </div>
+</section>
+{% endblock %}
