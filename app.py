@@ -1,5 +1,4 @@
 import os
-import sqlite3
 import json
 import secrets
 import smtplib
@@ -10,6 +9,7 @@ from datetime import datetime
 from functools import wraps
 from threading import Thread
 
+import psycopg2
 from flask import (
     Flask, render_template, request, redirect, url_for,
     session, flash, g, abort, send_from_directory
@@ -22,21 +22,14 @@ app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__), 'static', 
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
 
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
-USE_PG = DATABASE_URL.startswith('postgresql')
-DATABASE = os.path.join(os.path.dirname(__file__), 'cykloexpedice.db')
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-if USE_PG:
-    import psycopg2
-    import psycopg2.extras
-
 
 # ── Database abstraction ─────────────────────────────────────────
-# Wraps PostgreSQL to behave like SQLite (dict-like rows, ? placeholders)
+# Wraps PostgreSQL to use ? placeholders and dict-like row access
 
 class PgCursorWrapper:
-    """Wraps a psycopg2 cursor result to support row['key'] access like sqlite3.Row."""
     def __init__(self, cursor):
         self._cursor = cursor
         self._desc = cursor.description
@@ -57,7 +50,6 @@ class PgCursorWrapper:
 
 
 class DictRow(dict):
-    """Dict that also supports index-based access for compatibility."""
     def __getitem__(self, key):
         if isinstance(key, int):
             return list(self.values())[key]
@@ -65,7 +57,6 @@ class DictRow(dict):
 
 
 class PgConnectionWrapper:
-    """Wraps psycopg2 connection to mimic sqlite3 connection API."""
     def __init__(self, conn):
         self._conn = conn
 
@@ -86,13 +77,8 @@ class PgConnectionWrapper:
 
 
 def _connect_db():
-    if USE_PG:
-        conn = psycopg2.connect(DATABASE_URL)
-        return PgConnectionWrapper(conn)
-    else:
-        conn = sqlite3.connect(DATABASE)
-        conn.row_factory = sqlite3.Row
-        return conn
+    conn = psycopg2.connect(DATABASE_URL)
+    return PgConnectionWrapper(conn)
 
 
 # ── Database helpers ──────────────────────────────────────────────
@@ -113,68 +99,44 @@ def close_db(exception):
 def init_db():
     db = _connect_db()
 
-    if USE_PG:
-        # PostgreSQL schema
-        for stmt in [
-            '''CREATE TABLE IF NOT EXISTS admins (
-                id SERIAL PRIMARY KEY, username TEXT UNIQUE NOT NULL,
-                email TEXT, password_hash TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''',
-            '''CREATE TABLE IF NOT EXISTS password_reset_tokens (
-                id SERIAL PRIMARY KEY, admin_id INTEGER NOT NULL REFERENCES admins(id),
-                token TEXT UNIQUE NOT NULL, expires_at TIMESTAMP NOT NULL,
-                used INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''',
-            '''CREATE TABLE IF NOT EXISTS site_settings (
-                key TEXT PRIMARY KEY, value TEXT)''',
-            '''CREATE TABLE IF NOT EXISTS etapy (
-                id SERIAL PRIMARY KEY, number INTEGER NOT NULL UNIQUE,
-                title TEXT NOT NULL, date TEXT, distance TEXT,
-                elevation_up TEXT, elevation_down TEXT, route TEXT,
-                waypoints TEXT, description TEXT, map_link TEXT,
-                map_download TEXT, profile_image TEXT, qr_image TEXT,
-                gpx_file TEXT, youtube_links TEXT, color TEXT DEFAULT '#ffc107')''',
-            '''CREATE TABLE IF NOT EXISTS propozice (
-                id SERIAL PRIMARY KEY, content TEXT NOT NULL,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''',
-            '''CREATE TABLE IF NOT EXISTS ubytovani (
-                id SERIAL PRIMARY KEY, etapa_number INTEGER,
-                name TEXT NOT NULL, city TEXT, date TEXT,
-                rooms_info TEXT, food_info TEXT, link TEXT,
-                sort_order INTEGER DEFAULT 0)''',
-            '''CREATE TABLE IF NOT EXISTS aktuality (
-                id SERIAL PRIMARY KEY, title TEXT NOT NULL,
-                content TEXT NOT NULL, published INTEGER DEFAULT 1,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''',
-            '''CREATE TABLE IF NOT EXISTS registrace (
-                id SERIAL PRIMARY KEY, name TEXT NOT NULL,
-                email TEXT, phone TEXT, note TEXT,
-                status TEXT DEFAULT 'pending', admin_note TEXT,
-                decided_at TIMESTAMP, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''',
-        ]:
-            db.execute(stmt)
-        db.commit()
-    else:
-        # SQLite schema from file
-        raw_conn = sqlite3.connect(DATABASE)
-        with open(os.path.join(os.path.dirname(__file__), 'schema.sql')) as f:
-            raw_conn.executescript(f.read())
-
-        # Migrate: add email to admins if missing
-        admin_cols = [row[1] for row in raw_conn.execute('PRAGMA table_info(admins)').fetchall()]
-        if 'email' not in admin_cols:
-            raw_conn.execute("ALTER TABLE admins ADD COLUMN email TEXT")
-
-        # Migrate: add status/admin_note/decided_at to registrace if missing
-        cols = [row[1] for row in raw_conn.execute('PRAGMA table_info(registrace)').fetchall()]
-        if 'status' not in cols:
-            raw_conn.execute("ALTER TABLE registrace ADD COLUMN status TEXT DEFAULT 'pending'")
-        if 'admin_note' not in cols:
-            raw_conn.execute("ALTER TABLE registrace ADD COLUMN admin_note TEXT")
-        if 'decided_at' not in cols:
-            raw_conn.execute("ALTER TABLE registrace ADD COLUMN decided_at TIMESTAMP")
-
-        raw_conn.commit()
-        raw_conn.close()
+    for stmt in [
+        '''CREATE TABLE IF NOT EXISTS admins (
+            id SERIAL PRIMARY KEY, username TEXT UNIQUE NOT NULL,
+            email TEXT, password_hash TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''',
+        '''CREATE TABLE IF NOT EXISTS password_reset_tokens (
+            id SERIAL PRIMARY KEY, admin_id INTEGER NOT NULL REFERENCES admins(id),
+            token TEXT UNIQUE NOT NULL, expires_at TIMESTAMP NOT NULL,
+            used INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''',
+        '''CREATE TABLE IF NOT EXISTS site_settings (
+            key TEXT PRIMARY KEY, value TEXT)''',
+        '''CREATE TABLE IF NOT EXISTS etapy (
+            id SERIAL PRIMARY KEY, number INTEGER NOT NULL UNIQUE,
+            title TEXT NOT NULL, date TEXT, distance TEXT,
+            elevation_up TEXT, elevation_down TEXT, route TEXT,
+            waypoints TEXT, description TEXT, map_link TEXT,
+            map_download TEXT, profile_image TEXT, qr_image TEXT,
+            gpx_file TEXT, youtube_links TEXT, color TEXT DEFAULT '#ffc107')''',
+        '''CREATE TABLE IF NOT EXISTS propozice (
+            id SERIAL PRIMARY KEY, content TEXT NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''',
+        '''CREATE TABLE IF NOT EXISTS ubytovani (
+            id SERIAL PRIMARY KEY, etapa_number INTEGER,
+            name TEXT NOT NULL, city TEXT, date TEXT,
+            rooms_info TEXT, food_info TEXT, link TEXT,
+            sort_order INTEGER DEFAULT 0)''',
+        '''CREATE TABLE IF NOT EXISTS aktuality (
+            id SERIAL PRIMARY KEY, title TEXT NOT NULL,
+            content TEXT NOT NULL, published INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''',
+        '''CREATE TABLE IF NOT EXISTS registrace (
+            id SERIAL PRIMARY KEY, name TEXT NOT NULL,
+            email TEXT, phone TEXT, note TEXT,
+            status TEXT DEFAULT 'pending', admin_note TEXT,
+            decided_at TIMESTAMP, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''',
+    ]:
+        db.execute(stmt)
+    db.commit()
 
     # Create default admins if they don't exist
     for username in ['michal', 'adam']:
@@ -182,7 +144,7 @@ def init_db():
         if not existing:
             db.execute('INSERT INTO admins (username) VALUES (?)', (username,))
 
-    # Default site settings
+    # Default site settings (only inserted if not already present)
     defaults = {
         'event_name': 'STAROČESKÁ CYKLOEXPEDICE',
         'event_year': '2025',
@@ -217,15 +179,7 @@ def init_db():
                 db.execute('INSERT INTO site_settings (key, value) VALUES (?, ?)', (key, value))
 
     db.commit()
-
-    # Auto-seed if database is empty (no etapy)
-    count = db.execute('SELECT COUNT(*) c FROM etapy').fetchone()['c']
-    if count == 0:
-        db.close()
-        from seed_data import seed
-        seed()
-    else:
-        db.close()
+    db.close()
 
 
 def get_settings():

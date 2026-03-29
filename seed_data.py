@@ -1,89 +1,80 @@
 """Seed the database with data from the existing cykloexpedice.cz website."""
 import json
 import os
-import sys
+import sqlite3
 
-# Add parent dir so we can import the db wrapper
-sys.path.insert(0, os.path.dirname(__file__))
-from app import _connect_db
+DATABASE_URL = os.environ.get('DATABASE_URL', '')
+DATABASE = os.path.join(os.path.dirname(__file__), 'cykloexpedice.db')
 
 
-def seed():
-    db = _connect_db()
+def seed(db=None):
+    """Seed database. Accepts an existing db connection or creates its own."""
+    close_after = False
+    if db is None:
+        db = sqlite3.connect(DATABASE)
+        db.row_factory = sqlite3.Row
+        close_after = True
 
     # ── Etapy ──────────────────────────────────────────────────
+    placeholder_desc = '<p>Podrobný popis trasy se připravuje a bude doplněn v nejbližší době. Sledujte aktuality.</p>'
+
     etapy = [
         {
             'number': 1,
             'title': 'První etapa',
-            'date': '11.09.2025 (čtvrtek)',
-            'distance': '96,6 km',
-            'elevation_up': '76m',
-            'elevation_down': '517m',
-            'route': 'hora ŘÍP – PODĚBRADY',
-            'waypoints': 'hora ŘÍP • soutok Labe a Vltavy u Mělníka • Labská cyklostezka • Brandýs n.L. / Stará Boleslav • Čelákovice • Kersko • Nymburk • Poděbrady',
-            'description': '''<p>Necháme se zavést co nejblíže k hoře Říp. Rádi bychom odstartovali letošní expedici nahoře u rotundy sv. Jiří a Vojtěcha, věřím, že těch 190 výškových metrů na 1,7 km zvládneme a bude to stát za to.</p>
-<p>První etapa je po startu na Řípu naprostá placka, rovinatá jízda, kdy se budeme držet hodně kolem Labe, skoro celou trasu pošlapeme po Labské cyklostezce.</p>
-<p>Z Řípu sjedeme k Labi u Horních Počáplů a pojedeme k soutoku Labe a Vltavy u Mělníka.</p>
-<p>Tam přejedeme na pravý břeh a držíme se přes menší obce směrem na Neratovice a Kostelec nad Labem.</p>
-<p>Kolem Labe pokračujeme mezi dvojměstím Stará Boleslav – Brandýs nad Labem.</p>
-<p>Mineme Lázně Toušeň a objedeme jezero mezi mosty k Čelákovicím.</p>
-<p>Dále trasa pokračuje v oblasti Labských tůní k mostu u Lysé nad Labem, odkud je to už jen kousek do Kerského lesa.</p>
-<p>Nejdříve narazíme na Hrabalovu chatu, pak přes Josefův pramen můžeme zaskočit do Hrabalovy hájenky i třeba na vepřovou se zelím nebo s šípkovou.</p>''',
-            'map_link': 'https://mapy.cz/s/cenajalato',
-            'youtube_links': json.dumps([
-                'https://www.youtube.com/embed/X7KSlcEpsxM',
-                'https://www.youtube.com/embed/kpsYv1CPFxU',
-            ]),
+            'date': 'Bude upřesněno',
+            'distance': '–',
+            'elevation_up': '–',
+            'elevation_down': '–',
+            'route': 'Bude upřesněno',
+            'waypoints': 'Připravujeme',
+            'description': placeholder_desc,
+            'map_link': '',
+            'youtube_links': json.dumps([]),
             'color': '#ffc107',
         },
         {
             'number': 2,
             'title': 'Druhá etapa',
-            'date': '12.09.2025 (pátek)',
-            'distance': '93,3 km',
-            'elevation_up': '688m',
-            'elevation_down': '324m',
-            'route': 'PODĚBRADY – ŽDÍREC NAD DOUBRAVOU',
-            'waypoints': 'Labská cyklostezka • soutok Labe a Cidliny • Kolín • Kutná Hora • Čáslav • Žleby • Ždírec n. Doubravou',
-            'description': '''<p>Druhý den nás čeká cesta přes řadu historických měst, pozvolné stoupání až na úpatí Železných hor.</p>
-<p>Začínáme ještě pořád kolem řek, Labe a Cidliny, jejichž soutok je hned na 4. km, cestou k slavníkovskému hradišti u Libic nad Cidlinou.</p>
-<p>Z Libic se přes Velký Osek dostaneme k Labi a kolem přírodních rezervací Labských luhů navštívíme Kolín. Přes Kmochův ostrov a náměstí vyrazíme ke Kutné Hoře.</p>
-<p>Tam trasu vedeme historickým centrem tohoto kdysi hlavního evropského města stříbra až k chrámu Svaté Barbory, jedné z nejkrásnějších gotických staveb v zemi.</p>
-<p>Z města vyjedeme kolem řeky Vrchlice otevřenější krajinou, přes zámek Třebešice až do Čáslavi.</p>
-<p>Trasa dál vede východně směr Žleby. Dále už budeme kopírovat okraj Železných hor.</p>
-<p>Přes řadu menších obcí otevřenou krajinou přes řeku Doubravu k CHKO Železné hory u Běstvin, pak dál po vedlejších silničkách vjedeme za Libicemi nad Doubravou do CHKO Žďárské vrchy, až k hotelu Filippi ve Ždírci nad Doubravou, cíli druhé části expedice.</p>''',
+            'date': 'Bude upřesněno',
+            'distance': '–',
+            'elevation_up': '–',
+            'elevation_down': '–',
+            'route': 'Bude upřesněno',
+            'waypoints': 'Připravujeme',
+            'description': placeholder_desc,
             'map_link': '',
-            'youtube_links': json.dumps([
-                'https://www.youtube.com/embed/-9s_vplz5_I',
-                'https://www.youtube.com/embed/V2kdLy1xRwM',
-            ]),
+            'youtube_links': json.dumps([]),
             'color': '#e5e7eb',
         },
         {
             'number': 3,
             'title': 'Třetí etapa',
-            'date': '13.09.2025 (sobota)',
-            'distance': '96,7 km',
-            'elevation_up': '936m',
-            'elevation_down': '1218m',
-            'route': 'ŽDÍREC NAD DOUBRAVOU – BLANSKO',
-            'waypoints': 'lesy Železných hor • Herálec • Žďárské vrchy • Kadov • Sněžné • Jimramov • Nyklovice • Kunštát • Černá hora • Blansko',
-            'description': '''<p>Poslední etapa je svým profilem pěkně zubatá, nahoru dolů, hodně lesnatá a v opuštěných krajích. Poslední třetinu už budeme hlavně sjíždět dolů.</p>
-<p>Startujeme v lesích Žďárských vrchů, které přejedeme přes Krucemburk, Herálec, po úpatí Devíti skal do Kadova a Sněžného, většinou po vedlejších silnicích a lesních cestách.</p>
-<p>Pokračujeme přes Jimramovské paseky a Jimramov Vrchovinou směrem k Nyklovicím u Bystrého a z Ústupu u Olešnice už jen klesáme k Rudce, Kunštátu, přes Drnovice a Lysice do Černé Hory a domů.</p>''',
+            'date': 'Bude upřesněno',
+            'distance': '–',
+            'elevation_up': '–',
+            'elevation_down': '–',
+            'route': 'Bude upřesněno',
+            'waypoints': 'Připravujeme',
+            'description': placeholder_desc,
             'map_link': '',
-            'youtube_links': json.dumps([
-                'https://www.youtube.com/embed/IcLGtgPSnjU',
-                'https://www.youtube.com/embed/il8854kiRLw',
-            ]),
+            'youtube_links': json.dumps([]),
             'color': '#06b6d4',
         },
     ]
 
     for e in etapy:
         existing = db.execute('SELECT id FROM etapy WHERE number = ?', (e['number'],)).fetchone()
-        if not existing:
+        if existing:
+            db.execute(
+                '''UPDATE etapy SET title=?, date=?, distance=?, elevation_up=?, elevation_down=?,
+                   route=?, waypoints=?, description=?, map_link=?, youtube_links=?, color=?
+                   WHERE number=?''',
+                (e['title'], e['date'], e['distance'], e['elevation_up'],
+                 e['elevation_down'], e['route'], e['waypoints'], e['description'],
+                 e['map_link'], e['youtube_links'], e['color'], e['number'])
+            )
+        else:
             db.execute(
                 '''INSERT INTO etapy (number, title, date, distance, elevation_up, elevation_down,
                    route, waypoints, description, map_link, youtube_links, color)
@@ -177,7 +168,8 @@ def seed():
         )
 
     db.commit()
-    db.close()
+    if close_after:
+        db.close()
     print('Database seeded successfully!')
 
 
