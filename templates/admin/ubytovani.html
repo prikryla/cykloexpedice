@@ -30,9 +30,9 @@
                 <td class="px-4 py-3 text-gray-500">{{ u.etapa_number or '–' }}</td>
                 <td class="px-4 py-3 text-right">
                     <a href="{{ url_for('admin_ubytovani_edit', id=u.id) }}" class="text-blue-600 hover:underline mr-3">Upravit</a>
-                    <form method="POST" action="{{ url_for('admin_ubytovani_delete', id=u.id) }}" class="inline"
-                          onsubmit="return confirm('Opravdu smazat?')">
-                        <button class="text-red-600 hover:underline">Smazat</button>
+                    <form method="POST" action="{{ url_for('admin_ubytovani_delete', id=u.id) }}" class="inline">
+                        <button type="button" class="text-red-600 hover:underline"
+                                @click="$dispatch('confirm-delete', { form: $el.closest('form'), message: 'Opravdu chcete smazat ubytování „{{ u.name }}"?' })">Smazat</button>
                     </form>
                 </td>
             </tr>

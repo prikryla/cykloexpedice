@@ -93,9 +93,9 @@
                             <i class="bi bi-x-circle"></i> Zamítnout
                         </a>
                         {% endif %}
-                        <form method="POST" action="{{ url_for('admin_registrace_delete', id=r.id) }}" class="inline"
-                              onsubmit="return confirm('Opravdu smazat registraci?')">
-                            <button class="text-gray-400 hover:text-red-600 hover:underline" title="Smazat">
+                        <form method="POST" action="{{ url_for('admin_registrace_delete', id=r.id) }}" class="inline">
+                            <button type="button" class="text-gray-400 hover:text-red-600 hover:underline" title="Smazat"
+                                    @click="$dispatch('confirm-delete', { form: $el.closest('form'), message: 'Opravdu chcete smazat registraci od „{{ r.name }}"?' })">
                                 <i class="bi bi-trash"></i>
                             </button>
                         </form>
