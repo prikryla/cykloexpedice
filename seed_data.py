@@ -1,13 +1,15 @@
 """Seed the database with data from the existing cykloexpedice.cz website."""
-import sqlite3
 import json
 import os
+import sys
 
-DATABASE = os.path.join(os.path.dirname(__file__), 'cykloexpedice.db')
+# Add parent dir so we can import the db wrapper
+sys.path.insert(0, os.path.dirname(__file__))
+from app import _connect_db
 
 
 def seed():
-    db = sqlite3.connect(DATABASE)
+    db = _connect_db()
 
     # ── Etapy ──────────────────────────────────────────────────
     etapy = [
