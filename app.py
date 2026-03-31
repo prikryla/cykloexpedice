@@ -19,6 +19,7 @@ from flask import (
     session, flash, g, abort, send_from_directory
 )
 import bcrypt
+from vokativ import vokativ as _vokativ
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
@@ -185,21 +186,21 @@ def init_db():
         # Email templates
         'email_submitted_subject': 'Přihláška přijata – {{event_name}} {{event_year}}',
         'email_submitted_body': '<h2 style="color: #99b20f; margin: 0 0 20px 0;">Přihláška přijata</h2>'
-            '<p>Dobrý den, <strong>{{name}}</strong>,</p>'
+            '<p>Ahoj <strong>{{name_vocative}}</strong>,</p>'
             '<p>děkujeme za vaši přihlášku na <strong>{{event_name}} {{event_year}}</strong>. '
             'Vaše přihláška byla úspěšně zaregistrována.</p>'
             '<p>Jakmile bude kapacita naplněna, budeme vás kontaktovat s dalšími informacemi.</p>'
             '<p style="margin-top: 24px;">S pozdravem,<br>{{contact_name_1}} & {{contact_name_2}}</p>',
         'email_approved_subject': 'Přihláška schválena – {{event_name}} {{event_year}}',
         'email_approved_body': '<h2 style="color: #99b20f; margin: 0 0 20px 0;">Vaše přihláška byla schválena!</h2>'
-            '<p>Dobrý den, <strong>{{name}}</strong>,</p>'
+            '<p>Ahoj <strong>{{name_vocative}}</strong>,</p>'
             '<p>s radostí vám oznamujeme, že vaše přihláška na <strong>{{event_name}} {{event_year}}</strong> '
             'byla <strong>schválena</strong>.</p>'
             '<p>Brzy vás budeme kontaktovat s dalšími podrobnostmi k expedici.</p>'
             '<p style="margin-top: 24px;">Těšíme se na vás!<br>{{contact_name_1}} & {{contact_name_2}}</p>',
         'email_denied_subject': 'Přihláška zamítnuta – {{event_name}} {{event_year}}',
         'email_denied_body': '<h2 style="color: #e53e3e; margin: 0 0 20px 0;">Přihláška zamítnuta</h2>'
-            '<p>Dobrý den, <strong>{{name}}</strong>,</p>'
+            '<p>Ahoj <strong>{{name_vocative}}</strong>,</p>'
             '<p>bohužel vám musíme sdělit, že vaše přihláška na <strong>{{event_name}} {{event_year}}</strong> '
             'byla <strong>zamítnuta</strong>.</p>'
             '<div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 15px; margin: 20px 0; border-radius: 0 8px 8px 0;">'
@@ -208,7 +209,7 @@ def init_db():
             '<p style="margin-top: 24px;">S pozdravem,<br>{{contact_name_1}} & {{contact_name_2}}</p>',
         'email_payment_subject': 'Platební údaje – {{event_name}} {{event_year}}',
         'email_payment_body': '<h2 style="color: #99b20f; margin: 0 0 20px 0;">Platební údaje</h2>'
-            '<p>Dobrý den, <strong>{{name}}</strong>,</p>'
+            '<p>Ahoj <strong>{{name_vocative}}</strong>,</p>'
             '<p>vaše přihláška na <strong>{{event_name}} {{event_year}}</strong> byla schválena. '
             'Níže naleznete platební údaje.</p>'
             '<div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; margin: 20px 0;">'
@@ -216,6 +217,7 @@ def init_db():
             '<tr><td style="padding: 8px 0; color: #6b7280;">Číslo účtu:</td><td style="padding: 8px 0; font-weight: 700;">{{bank_account}}</td></tr>'
             '<tr><td style="padding: 8px 0; color: #6b7280;">Částka:</td><td style="padding: 8px 0; font-weight: 700;">{{amount}} Kč</td></tr>'
             '<tr><td style="padding: 8px 0; color: #6b7280;">Variabilní symbol:</td><td style="padding: 8px 0; font-weight: 700;">{{vs}}</td></tr>'
+            '<tr><td style="padding: 8px 0; color: #6b7280;">Poznámka:</td><td style="padding: 8px 0; font-weight: 700;">{{payment_note}}</td></tr>'
             '</table></div>'
             '{{qr_code}}'
             '<p style="text-align: center; font-size: 13px; color: #6b7280;">Naskenujte QR kód v bankovní aplikaci pro rychlou platbu.</p>'
@@ -347,12 +349,23 @@ def render_email_layout(body_html, settings):
 </body></html>"""
 
 
+def name_vocative(full_name):
+    """Get the vocative (5. pád) of the first name, capitalized."""
+    first = full_name.strip().split()[0] if full_name else ''
+    if not first:
+        return ''
+    return _vokativ(first).capitalize()
+
+
 def render_email_template(template_key, variables, settings=None):
     """Load email template from settings, replace placeholders, wrap in layout.
     Returns (subject, full_html).
     """
     if settings is None:
         settings = get_settings()
+    # Auto-generate vocative from name
+    if 'name' in variables and 'name_vocative' not in variables:
+        variables['name_vocative'] = name_vocative(variables['name'])
     subject = settings.get(f'{template_key}_subject', '')
     body = settings.get(f'{template_key}_body', '')
     # Replace all {{placeholder}} with values
@@ -1162,8 +1175,12 @@ def admin_registrace_send_payment(id):
     event_name = settings.get('event_name', 'Cykloexpedice')
     event_year = settings.get('event_year', '')
 
+    # Build payment note from name: "WACHAU_firstname_lastname"
+    name_parts = reg['name'].strip().split()
+    payment_note = 'WACHAU_' + '_'.join(name_parts)
+
     # Generate QR code
-    qr_b64 = generate_payment_qr(iban, amount, vs, f'{event_name} {event_year}')
+    qr_b64 = generate_payment_qr(iban, amount, vs, payment_note)
 
     # Update registration
     db.execute(
@@ -1182,6 +1199,7 @@ def admin_registrace_send_payment(id):
         'bank_account': bank_account,
         'amount': f'{amount:.0f}',
         'vs': str(vs),
+        'payment_note': payment_note,
         'qr_code': qr_html,
         'contact_name_1': settings.get('contact_name_1', ''),
         'contact_name_2': settings.get('contact_name_2', ''),
@@ -1204,30 +1222,47 @@ def admin_check_payments():
 
 # ── Admin: Email templates ────────────────────────────────────
 
+_COMMON_PLACEHOLDERS = {
+    'name': 'Jméno účastníka',
+    'name_vocative': 'Jméno v 5. pádu (Michale, Vlasto…)',
+    'event_name': 'Název akce',
+    'event_year': 'Rok akce',
+    'contact_name_1': 'Jméno organizátora 1',
+    'contact_name_2': 'Jméno organizátora 2',
+    'contact_email': 'Kontaktní e-mail',
+}
+
 EMAIL_TEMPLATES = [
     {
         'key': 'email_submitted',
         'label': 'Potvrzení přihlášky',
         'description': 'Odesláno účastníkovi po odeslání přihlášky.',
-        'placeholders': ['name', 'event_name', 'event_year', 'contact_name_1', 'contact_name_2', 'contact_email'],
+        'placeholders': _COMMON_PLACEHOLDERS,
     },
     {
         'key': 'email_approved',
         'label': 'Schválení přihlášky',
         'description': 'Odesláno účastníkovi po schválení přihlášky adminem.',
-        'placeholders': ['name', 'event_name', 'event_year', 'contact_name_1', 'contact_name_2', 'contact_email'],
+        'placeholders': _COMMON_PLACEHOLDERS,
     },
     {
         'key': 'email_denied',
         'label': 'Zamítnutí přihlášky',
         'description': 'Odesláno účastníkovi po zamítnutí přihlášky adminem.',
-        'placeholders': ['name', 'reason', 'event_name', 'event_year', 'contact_name_1', 'contact_name_2', 'contact_email'],
+        'placeholders': {**_COMMON_PLACEHOLDERS, 'reason': 'Důvod zamítnutí'},
     },
     {
         'key': 'email_payment',
         'label': 'Platební údaje',
         'description': 'Odesláno účastníkovi s platebními údaji a QR kódem.',
-        'placeholders': ['name', 'bank_account', 'amount', 'vs', 'qr_code', 'event_name', 'event_year', 'contact_name_1', 'contact_name_2', 'contact_email'],
+        'placeholders': {
+            **_COMMON_PLACEHOLDERS,
+            'bank_account': 'Číslo účtu',
+            'amount': 'Částka v Kč',
+            'vs': 'Variabilní symbol',
+            'payment_note': 'Poznámka k platbě',
+            'qr_code': 'QR kód (obrázek)',
+        },
     },
 ]
 
@@ -1264,6 +1299,7 @@ def admin_email_template_preview():
     # Fill placeholders with sample data
     sample = {
         'name': 'Jan Novák',
+        'name_vocative': 'Jane',
         'event_name': settings.get('event_name', 'Cykloexpedice'),
         'event_year': settings.get('event_year', '2025'),
         'contact_name_1': settings.get('contact_name_1', 'Organizátor 1'),
@@ -1273,6 +1309,7 @@ def admin_email_template_preview():
         'bank_account': settings.get('bank_account', '1234567890/0000'),
         'amount': settings.get('payment_amount', '3500'),
         'vs': '42',
+        'payment_note': 'WACHAU_Jan_Novak',
         'qr_code': '<p style="text-align:center;margin:25px 0;"><img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjUwIiBoZWlnaHQ9IjI1MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjUwIiBoZWlnaHQ9IjI1MCIgZmlsbD0iI2YzZjRmNiIgcng9IjEyIi8+PHRleHQgeD0iMTI1IiB5PSIxMjUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIiBmaWxsPSIjOWNhM2FmIiBmb250LWZhbWlseT0ic2Fucy1zZXJpZiIgZm9udC1zaXplPSIxNCI+UVIga8OzZDwvdGV4dD48L3N2Zz4=" alt="QR" style="width:250px;height:250px;"></p>',
     }
     for key, val in sample.items():

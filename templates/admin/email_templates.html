@@ -30,10 +30,10 @@
                     <!-- Available placeholders -->
                     <div class="flex flex-wrap gap-1.5 items-center">
                         <span class="text-xs text-gray-500 mr-1">Proměnné:</span>
-                        {% for p in tpl.placeholders %}
-                        <code class="px-2 py-1 bg-amber-50 text-amber-700 text-xs rounded-md font-mono cursor-pointer hover:bg-amber-100 select-all"
-                              onclick="insertPlaceholder('{{ tpl.key }}_body', '{% raw %}{{{% endraw %}{{ p }}{% raw %}}}{% endraw %}')"
-                              title="Klikněte pro vložení do editoru">{% raw %}{{{% endraw %}{{ p }}{% raw %}}}{% endraw %}</code>
+                        {% for key, desc in tpl.placeholders.items() %}
+                        <code class="px-2 py-1 bg-amber-50 text-amber-700 text-xs rounded-md font-mono cursor-pointer hover:bg-amber-100"
+                              onclick="insertPlaceholder('{{ tpl.key }}_body', '{% raw %}{{{% endraw %}{{ key }}{% raw %}}}{% endraw %}')"
+                              title="{{ desc }} — klikněte pro vložení">{% raw %}{{{% endraw %}{{ key }}{% raw %}}}{% endraw %}</code>
                         {% endfor %}
                     </div>
 
