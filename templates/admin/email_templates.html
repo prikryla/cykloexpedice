@@ -1,0 +1,157 @@
+{% extends "admin/base.html" %}
+{% block title %}E-mailové šablony{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+    <div>
+        <h1 class="text-2xl font-bold">E-mailové šablony</h1>
+        <p class="text-sm text-gray-500 mt-1">Upravte texty e-mailů odesílaných účastníkům. Použijte proměnné (žluté štítky) pro dynamické hodnoty — kliknutím je zkopírujete.</p>
+    </div>
+</div>
+
+<form method="POST" id="templates-form">
+    <div x-data="{ open: null }" class="space-y-4">
+        {% for tpl in templates %}
+        <div class="bg-white rounded-xl shadow overflow-hidden">
+            <!-- Accordion header -->
+            <button type="button" @click="open = open === {{ loop.index }} ? null : {{ loop.index }}; $nextTick(() => { if (open === {{ loop.index }}) initEditor('{{ tpl.key }}_body') })"
+                    class="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-gray-50 transition">
+                <div>
+                    <h2 class="font-bold text-gray-900">{{ tpl.label }}</h2>
+                    <p class="text-sm text-gray-500">{{ tpl.description }}</p>
+                </div>
+                <i class="bi text-gray-400 transition-transform duration-200"
+                   :class="open === {{ loop.index }} ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
+            </button>
+
+            <!-- Accordion body -->
+            <div x-show="open === {{ loop.index }}" x-collapse x-cloak>
+                <div class="px-6 pb-6 border-t border-gray-100 pt-4 space-y-4">
+                    <!-- Available placeholders -->
+                    <div class="flex flex-wrap gap-1.5 items-center">
+                        <span class="text-xs text-gray-500 mr-1">Proměnné:</span>
+                        {% for p in tpl.placeholders %}
+                        <code class="px-2 py-1 bg-amber-50 text-amber-700 text-xs rounded-md font-mono cursor-pointer hover:bg-amber-100 select-all"
+                              onclick="insertPlaceholder('{{ tpl.key }}_body', '{% raw %}{{{% endraw %}{{ p }}{% raw %}}}{% endraw %}')"
+                              title="Klikněte pro vložení do editoru">{% raw %}{{{% endraw %}{{ p }}{% raw %}}}{% endraw %}</code>
+                        {% endfor %}
+                    </div>
+
+                    <!-- Subject -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Předmět e-mailu</label>
+                        <input type="text" name="{{ tpl.key }}_subject"
+                               value="{{ settings.get(tpl.key ~ '_subject', '') }}"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 text-sm">
+                    </div>
+
+                    <!-- Body with TinyMCE -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Obsah e-mailu</label>
+                        <textarea name="{{ tpl.key }}_body" id="{{ tpl.key }}_body"
+                                  class="email-editor">{{ settings.get(tpl.key ~ '_body', '') }}</textarea>
+                    </div>
+
+                    <!-- Preview button -->
+                    <div class="flex gap-2">
+                        <button type="button"
+                                onclick="previewTemplate('{{ tpl.key }}')"
+                                class="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition">
+                            <i class="bi bi-eye"></i> Náhled
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="mt-6">
+        <button type="submit" class="px-6 py-3 bg-amber-500 text-gray-900 font-bold rounded-lg hover:bg-amber-400">
+            Uložit všechny šablony
+        </button>
+    </div>
+</form>
+
+<!-- Preview modal -->
+<div id="preview-modal" class="fixed inset-0 z-[100] flex items-center justify-center hidden">
+    <div class="absolute inset-0 bg-black/50" onclick="closePreview()"></div>
+    <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col">
+        <div class="flex items-center justify-between p-4 border-b">
+            <h3 class="font-bold text-lg">Náhled e-mailu</h3>
+            <button onclick="closePreview()" class="text-gray-400 hover:text-gray-600 text-xl">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
+        <div class="flex-1 overflow-auto p-1">
+            <iframe id="preview-iframe" class="w-full border-0" style="min-height: 500px;"></iframe>
+        </div>
+    </div>
+</div>
+
+<script>
+var _initializedEditors = {};
+
+function initEditor(id) {
+    if (_initializedEditors[id]) return;
+    _initializedEditors[id] = true;
+    tinymce.init({
+        selector: '#' + id,
+        height: 350,
+        menubar: false,
+        plugins: 'lists link table code fullscreen preview',
+        toolbar: 'undo redo | blocks bold italic underline forecolor | bullist numlist | link table | alignleft aligncenter alignright | code fullscreen',
+        skin_url: 'https://cdn.jsdelivr.net/npm/tinymce@6/skins/ui/oxide',
+        content_css: 'https://cdn.jsdelivr.net/npm/tinymce@6/skins/content/default/content.min.css',
+        content_style: "body { font-family: 'Montserrat', Arial, sans-serif; font-size: 15px; line-height: 1.7; color: #374151; }",
+        valid_elements: '*[*]',
+        extended_valid_elements: 'div[*],table[*],tr[*],td[*],th[*],code[*],span[*],img[*]',
+        entity_encoding: 'raw',
+    });
+}
+
+function insertPlaceholder(editorId, placeholder) {
+    var editor = tinymce.get(editorId);
+    if (editor) {
+        editor.insertContent(placeholder);
+        editor.focus();
+    } else {
+        navigator.clipboard.writeText(placeholder);
+    }
+}
+
+function previewTemplate(key) {
+    // Sync TinyMCE content to textarea before reading
+    var editor = tinymce.get(key + '_body');
+    if (editor) editor.save();
+
+    var form = document.getElementById('templates-form');
+    var subject = form.querySelector('[name="' + key + '_subject"]').value;
+    var body = form.querySelector('[name="' + key + '_body"]').value;
+
+    var formData = new FormData();
+    formData.append('subject', subject);
+    formData.append('body', body);
+
+    fetch('{{ url_for("admin_email_template_preview") }}', {
+        method: 'POST',
+        body: formData,
+    })
+    .then(function(r) { return r.text(); })
+    .then(function(html) {
+        var iframe = document.getElementById('preview-iframe');
+        iframe.srcdoc = html;
+        document.getElementById('preview-modal').classList.remove('hidden');
+    });
+}
+
+function closePreview() {
+    document.getElementById('preview-modal').classList.add('hidden');
+}
+
+// Sync all TinyMCE editors before form submit
+document.getElementById('templates-form').addEventListener('submit', function() {
+    tinymce.triggerSave();
+});
+</script>
+{% endblock %}

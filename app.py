@@ -26,8 +26,10 @@ app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__), 'static', 
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
 
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
+FIO_API_TOKEN = os.environ.get('FIO_API_TOKEN', '')
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
 
 
 # ── Database abstraction ─────────────────────────────────────────
@@ -180,7 +182,44 @@ def init_db():
         'payment_amount': '3500',
         'bank_account': '2703473997/2010',
         'bank_iban': 'CZ1620100000002703473997',
-        'fio_api_token': '72vRcOTOVxCajfv2IaMNp18e6DoXLeXYHDku0iWUsoCbyXc2bRbZavcvPbDsr0fU',
+        # Email templates
+        'email_submitted_subject': 'Přihláška přijata – {{event_name}} {{event_year}}',
+        'email_submitted_body': '<h2 style="color: #99b20f; margin: 0 0 20px 0;">Přihláška přijata</h2>'
+            '<p>Dobrý den, <strong>{{name}}</strong>,</p>'
+            '<p>děkujeme za vaši přihlášku na <strong>{{event_name}} {{event_year}}</strong>. '
+            'Vaše přihláška byla úspěšně zaregistrována.</p>'
+            '<p>Jakmile bude kapacita naplněna, budeme vás kontaktovat s dalšími informacemi.</p>'
+            '<p style="margin-top: 24px;">S pozdravem,<br>{{contact_name_1}} & {{contact_name_2}}</p>',
+        'email_approved_subject': 'Přihláška schválena – {{event_name}} {{event_year}}',
+        'email_approved_body': '<h2 style="color: #99b20f; margin: 0 0 20px 0;">Vaše přihláška byla schválena!</h2>'
+            '<p>Dobrý den, <strong>{{name}}</strong>,</p>'
+            '<p>s radostí vám oznamujeme, že vaše přihláška na <strong>{{event_name}} {{event_year}}</strong> '
+            'byla <strong>schválena</strong>.</p>'
+            '<p>Brzy vás budeme kontaktovat s dalšími podrobnostmi k expedici.</p>'
+            '<p style="margin-top: 24px;">Těšíme se na vás!<br>{{contact_name_1}} & {{contact_name_2}}</p>',
+        'email_denied_subject': 'Přihláška zamítnuta – {{event_name}} {{event_year}}',
+        'email_denied_body': '<h2 style="color: #e53e3e; margin: 0 0 20px 0;">Přihláška zamítnuta</h2>'
+            '<p>Dobrý den, <strong>{{name}}</strong>,</p>'
+            '<p>bohužel vám musíme sdělit, že vaše přihláška na <strong>{{event_name}} {{event_year}}</strong> '
+            'byla <strong>zamítnuta</strong>.</p>'
+            '<div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 15px; margin: 20px 0; border-radius: 0 8px 8px 0;">'
+            '<strong>Důvod:</strong><br>{{reason}}</div>'
+            '<p>Pokud máte dotazy, neváhejte nás kontaktovat na {{contact_email}}.</p>'
+            '<p style="margin-top: 24px;">S pozdravem,<br>{{contact_name_1}} & {{contact_name_2}}</p>',
+        'email_payment_subject': 'Platební údaje – {{event_name}} {{event_year}}',
+        'email_payment_body': '<h2 style="color: #99b20f; margin: 0 0 20px 0;">Platební údaje</h2>'
+            '<p>Dobrý den, <strong>{{name}}</strong>,</p>'
+            '<p>vaše přihláška na <strong>{{event_name}} {{event_year}}</strong> byla schválena. '
+            'Níže naleznete platební údaje.</p>'
+            '<div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; margin: 20px 0;">'
+            '<table style="width: 100%; font-size: 15px;">'
+            '<tr><td style="padding: 8px 0; color: #6b7280;">Číslo účtu:</td><td style="padding: 8px 0; font-weight: 700;">{{bank_account}}</td></tr>'
+            '<tr><td style="padding: 8px 0; color: #6b7280;">Částka:</td><td style="padding: 8px 0; font-weight: 700;">{{amount}} Kč</td></tr>'
+            '<tr><td style="padding: 8px 0; color: #6b7280;">Variabilní symbol:</td><td style="padding: 8px 0; font-weight: 700;">{{vs}}</td></tr>'
+            '</table></div>'
+            '{{qr_code}}'
+            '<p style="text-align: center; font-size: 13px; color: #6b7280;">Naskenujte QR kód v bankovní aplikaci pro rychlou platbu.</p>'
+            '<p style="margin-top: 24px;">Těšíme se na vás!<br>{{contact_name_1}} & {{contact_name_2}}</p>',
     }
     for key, value in defaults.items():
         existing = db.execute('SELECT key FROM site_settings WHERE key = ?', (key,)).fetchone()
@@ -273,6 +312,57 @@ def send_email(to_email, subject, html_body, sender_username=None):
     Thread(target=_send, daemon=True).start()
 
 
+# ── Email template helpers ────────────────────────────────────
+
+def render_email_layout(body_html, settings):
+    """Wrap email body in a branded layout matching the website design."""
+    event_name = settings.get('event_name', 'Cykloexpedice')
+    event_year = settings.get('event_year', '')
+    contact_email = settings.get('contact_email', '')
+    contact_name_1 = settings.get('contact_name_1', '')
+    contact_name_2 = settings.get('contact_name_2', '')
+    return f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
+</head><body style="margin: 0; padding: 0; background-color: #f5f5f4;">
+<div style="max-width: 600px; margin: 0 auto; font-family: 'Montserrat', Arial, sans-serif;">
+    <!-- Header -->
+    <div style="background: #1c1c1b; padding: 40px 30px 32px; text-align: center;">
+        <h1 style="font-family: 'Oswald', Arial Black, sans-serif; color: #fbb01f; font-size: 32px; margin: 0; letter-spacing: 3px; font-weight: 700; text-transform: uppercase;">
+            {event_name}
+        </h1>
+        <div style="width: 60px; height: 4px; background: #fbb01f; margin: 16px auto 0; border-radius: 2px;"></div>
+        <p style="color: #9ca3af; font-size: 14px; margin: 12px 0 0; letter-spacing: 1px;">{event_year}</p>
+    </div>
+    <!-- Body -->
+    <div style="padding: 36px 30px; background: #ffffff; font-size: 15px; line-height: 1.7; color: #374151;">
+        {body_html}
+    </div>
+    <!-- Footer -->
+    <div style="background: #1c1c1b; padding: 28px 30px; text-align: center;">
+        <p style="color: #9ca3af; font-size: 13px; margin: 0 0 8px;">{contact_name_1} & {contact_name_2}</p>
+        <a href="mailto:{contact_email}" style="color: #fbb01f; font-size: 13px; text-decoration: none;">{contact_email}</a>
+    </div>
+</div>
+</body></html>"""
+
+
+def render_email_template(template_key, variables, settings=None):
+    """Load email template from settings, replace placeholders, wrap in layout.
+    Returns (subject, full_html).
+    """
+    if settings is None:
+        settings = get_settings()
+    subject = settings.get(f'{template_key}_subject', '')
+    body = settings.get(f'{template_key}_body', '')
+    # Replace all {{placeholder}} with values
+    for key, val in variables.items():
+        subject = subject.replace(f'{{{{{key}}}}}', str(val))
+        body = body.replace(f'{{{{{key}}}}}', str(val))
+    html = render_email_layout(body, settings)
+    return subject, html
+
+
 # ── Payment helpers ───────────────────────────────────────────
 
 def generate_payment_qr(iban, amount, vs, message=''):
@@ -295,7 +385,7 @@ def check_fio_payments():
     try:
         rows = db.execute('SELECT key, value FROM site_settings').fetchall()
         settings = {row['key']: row['value'] for row in rows}
-        token = settings.get('fio_api_token', '')
+        token = FIO_API_TOKEN
         if not token:
             return
 
@@ -454,6 +544,21 @@ def registrace():
             (name, email, phone, note)
         )
         db.commit()
+
+        # Send confirmation email
+        if email:
+            settings = get_settings()
+            tpl_vars = {
+                'name': name,
+                'event_name': settings.get('event_name', 'Cykloexpedice'),
+                'event_year': settings.get('event_year', ''),
+                'contact_name_1': settings.get('contact_name_1', ''),
+                'contact_name_2': settings.get('contact_name_2', ''),
+                'contact_email': settings.get('contact_email', ''),
+            }
+            subj, html = render_email_template('email_submitted', tpl_vars, settings)
+            send_email(email, subj, html)
+
         flash('Děkujeme za přihlášku! Ozveme se vám.', 'success')
         return redirect(url_for('registrace'))
     return render_template('registrace.html')
@@ -611,33 +716,25 @@ def admin_forgot_password():
 
             reset_url = request.host_url.rstrip('/') + url_for('admin_reset_password', token=token)
             settings = get_settings()
-            html = f"""
-            <div style="font-family: 'Montserrat', Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                <div style="background: #1c1c1b; padding: 30px; text-align: center;">
-                    <h1 style="color: #fbb01f; font-size: 28px; margin: 0;">Cykloexpedice – Admin</h1>
-                </div>
-                <div style="padding: 30px; background: #ffffff;">
-                    <h2 style="color: #1c1c1b;">Obnovení hesla</h2>
-                    <p>Dobrý den, <strong>{admin['username']}</strong>,</p>
-                    <p>obdrželi jsme žádost o obnovení hesla k vašemu účtu v administraci Cykloexpedice.</p>
-                    <p>Klikněte na tlačítko níže pro nastavení nového hesla:</p>
-                    <p style="text-align: center; margin: 30px 0;">
-                        <a href="{reset_url}"
-                           style="background: #fbb01f; color: #1c1c1b; padding: 14px 36px; border-radius: 50px;
-                                  text-decoration: none; font-weight: 700; font-size: 14px; display: inline-block;">
-                            NASTAVIT NOVÉ HESLO
-                        </a>
-                    </p>
-                    <p style="font-size: 13px; color: #999;">Tento odkaz je platný 1 hodinu. Pokud jste o obnovení hesla nežádali, tento e-mail ignorujte.</p>
-                    <p style="font-size: 12px; color: #ccc; word-break: break-all; margin-top: 20px;">
-                        Pokud tlačítko nefunguje, zkopírujte tento odkaz do prohlížeče:<br>{reset_url}
-                    </p>
-                </div>
-                <div style="background: #f3f3f2; padding: 15px; text-align: center; font-size: 12px; color: #999;">
-                    {settings.get('contact_email', '')}
-                </div>
-            </div>
+            body = f"""
+                <h2 style="color: #1c1c1b; margin: 0 0 20px 0;">Obnovení hesla</h2>
+                <p>Dobrý den, <strong>{admin['username']}</strong>,</p>
+                <p>obdrželi jsme žádost o obnovení hesla k vašemu účtu v administraci Cykloexpedice.</p>
+                <p>Klikněte na tlačítko níže pro nastavení nového hesla:</p>
+                <p style="text-align: center; margin: 30px 0;">
+                    <a href="{reset_url}"
+                       style="background: #fbb01f; color: #1c1c1b; padding: 14px 36px; border-radius: 50px;
+                              text-decoration: none; font-weight: 700; font-size: 14px; display: inline-block;
+                              letter-spacing: 1px;">
+                        NASTAVIT NOV&Eacute; HESLO
+                    </a>
+                </p>
+                <p style="font-size: 13px; color: #999;">Tento odkaz je platný 1 hodinu. Pokud jste o obnovení hesla nežádali, tento e-mail ignorujte.</p>
+                <p style="font-size: 12px; color: #ccc; word-break: break-all; margin-top: 20px;">
+                    Pokud tlačítko nefunguje, zkopírujte tento odkaz do prohlížeče:<br>{reset_url}
+                </p>
             """
+            html = render_email_layout(body, settings)
             send_email(admin['email'], 'Obnovení hesla – Cykloexpedice Admin', html)
 
         flash('Pokud účet existuje a má nastavený e-mail, odeslali jsme odkaz pro obnovení hesla.', 'success')
@@ -975,30 +1072,16 @@ def admin_registrace_approve(id):
 
     # Send approval email
     settings = get_settings()
-    event_name = settings.get('event_name', 'Cykloexpedice')
-    event_year = settings.get('event_year', '')
-    html = f"""
-    <div style="font-family: 'Montserrat', Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <div style="background: #1c1c1b; padding: 30px; text-align: center;">
-            <h1 style="color: #fbb01f; font-size: 28px; margin: 0;">
-                {event_name} {event_year}
-            </h1>
-        </div>
-        <div style="padding: 30px; background: #ffffff;">
-            <h2 style="color: #99b20f;">Vaše přihláška byla schválena!</h2>
-            <p>Dobrý den, <strong>{reg['name']}</strong>,</p>
-            <p>s radostí vám oznamujeme, že vaše přihláška na {event_name} {event_year} byla <strong>schválena</strong>.</p>
-            <p>Brzy vás budeme kontaktovat s dalšími podrobnostmi k expedici.</p>
-            <p>Těšíme se na vás!<br>
-            {settings.get('contact_name_1', '')} & {settings.get('contact_name_2', '')}</p>
-        </div>
-        <div style="background: #f3f3f2; padding: 15px; text-align: center; font-size: 12px; color: #999;">
-            {settings.get('contact_email', '')}
-        </div>
-    </div>
-    """
-    send_email(reg['email'], f'Přihláška schválena – {event_name} {event_year}', html,
-               sender_username=session.get('admin_username'))
+    tpl_vars = {
+        'name': reg['name'],
+        'event_name': settings.get('event_name', 'Cykloexpedice'),
+        'event_year': settings.get('event_year', ''),
+        'contact_name_1': settings.get('contact_name_1', ''),
+        'contact_name_2': settings.get('contact_name_2', ''),
+        'contact_email': settings.get('contact_email', ''),
+    }
+    subject, html = render_email_template('email_approved', tpl_vars, settings)
+    send_email(reg['email'], subject, html, sender_username=session.get('admin_username'))
 
     flash(f'Registrace pro {reg["name"]} byla schválena. E-mail odeslán.', 'success')
     return redirect(url_for('admin_registrace'))
@@ -1024,33 +1107,17 @@ def admin_registrace_deny(id):
 
         # Send denial email
         settings = get_settings()
-        event_name = settings.get('event_name', 'Cykloexpedice')
-        event_year = settings.get('event_year', '')
-        html = f"""
-        <div style="font-family: 'Montserrat', Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <div style="background: #1c1c1b; padding: 30px; text-align: center;">
-                <h1 style="color: #fbb01f; font-size: 28px; margin: 0;">
-                    {event_name} {event_year}
-                </h1>
-            </div>
-            <div style="padding: 30px; background: #ffffff;">
-                <h2 style="color: #e53e3e;">Přihláška zamítnuta</h2>
-                <p>Dobrý den, <strong>{reg['name']}</strong>,</p>
-                <p>bohužel vám musíme sdělit, že vaše přihláška na {event_name} {event_year} byla <strong>zamítnuta</strong>.</p>
-                <div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 15px; margin: 20px 0;">
-                    <strong>Důvod:</strong><br>{reason}
-                </div>
-                <p>Pokud máte dotazy, neváhejte nás kontaktovat na {settings.get('contact_email', '')}.</p>
-                <p>S pozdravem,<br>
-                {settings.get('contact_name_1', '')} & {settings.get('contact_name_2', '')}</p>
-            </div>
-            <div style="background: #f3f3f2; padding: 15px; text-align: center; font-size: 12px; color: #999;">
-                {settings.get('contact_email', '')}
-            </div>
-        </div>
-        """
-        send_email(reg['email'], f'Přihláška zamítnuta – {event_name} {event_year}', html,
-                   sender_username=session.get('admin_username'))
+        tpl_vars = {
+            'name': reg['name'],
+            'reason': reason,
+            'event_name': settings.get('event_name', 'Cykloexpedice'),
+            'event_year': settings.get('event_year', ''),
+            'contact_name_1': settings.get('contact_name_1', ''),
+            'contact_name_2': settings.get('contact_name_2', ''),
+            'contact_email': settings.get('contact_email', ''),
+        }
+        subject, html = render_email_template('email_denied', tpl_vars, settings)
+        send_email(reg['email'], subject, html, sender_username=session.get('admin_username'))
 
         flash(f'Registrace pro {reg["name"]} byla zamítnuta. E-mail odeslán.', 'success')
         return redirect(url_for('admin_registrace'))
@@ -1107,41 +1174,21 @@ def admin_registrace_send_payment(id):
     db.commit()
 
     # Send payment email
-    html = f"""
-    <div style="font-family: 'Montserrat', Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <div style="background: #1c1c1b; padding: 30px; text-align: center;">
-            <h1 style="color: #fbb01f; font-size: 28px; margin: 0;">
-                {event_name} {event_year}
-            </h1>
-        </div>
-        <div style="padding: 30px; background: #ffffff;">
-            <h2 style="color: #99b20f;">Platební údaje</h2>
-            <p>Dobrý den, <strong>{reg['name']}</strong>,</p>
-            <p>vaše přihláška na {event_name} {event_year} byla schválena. Níže naleznete platební údaje.</p>
-
-            <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; margin: 20px 0;">
-                <table style="width: 100%; font-size: 15px;">
-                    <tr><td style="padding: 6px 0; color: #6b7280;">Číslo účtu:</td><td style="padding: 6px 0; font-weight: 600;">{bank_account}</td></tr>
-                    <tr><td style="padding: 6px 0; color: #6b7280;">Částka:</td><td style="padding: 6px 0; font-weight: 600;">{amount:.0f} Kč</td></tr>
-                    <tr><td style="padding: 6px 0; color: #6b7280;">Variabilní symbol:</td><td style="padding: 6px 0; font-weight: 600;">{vs}</td></tr>
-                </table>
-            </div>
-
-            <p style="text-align: center; margin: 25px 0;">
-                <img src="data:image/png;base64,{qr_b64}" alt="QR platba" style="width: 250px; height: 250px;">
-            </p>
-            <p style="text-align: center; font-size: 13px; color: #6b7280;">Naskenujte QR kód v bankovní aplikaci pro rychlou platbu.</p>
-
-            <p style="margin-top: 20px;">Těšíme se na vás!<br>
-            {settings.get('contact_name_1', '')} & {settings.get('contact_name_2', '')}</p>
-        </div>
-        <div style="background: #f3f3f2; padding: 15px; text-align: center; font-size: 12px; color: #999;">
-            {settings.get('contact_email', '')}
-        </div>
-    </div>
-    """
-    send_email(reg['email'], f'Platební údaje – {event_name} {event_year}', html,
-               sender_username=session.get('admin_username'))
+    qr_html = f'<p style="text-align: center; margin: 25px 0;"><img src="data:image/png;base64,{qr_b64}" alt="QR platba" style="width: 250px; height: 250px;"></p>'
+    tpl_vars = {
+        'name': reg['name'],
+        'event_name': event_name,
+        'event_year': event_year,
+        'bank_account': bank_account,
+        'amount': f'{amount:.0f}',
+        'vs': str(vs),
+        'qr_code': qr_html,
+        'contact_name_1': settings.get('contact_name_1', ''),
+        'contact_name_2': settings.get('contact_name_2', ''),
+        'contact_email': settings.get('contact_email', ''),
+    }
+    subject, html = render_email_template('email_payment', tpl_vars, settings)
+    send_email(reg['email'], subject, html, sender_username=session.get('admin_username'))
 
     flash(f'Platební QR kód odeslán na {reg["email"]} (VS: {vs}).', 'success')
     return redirect(url_for('admin_registrace'))
@@ -1155,6 +1202,86 @@ def admin_check_payments():
     return redirect(url_for('admin_registrace'))
 
 
+# ── Admin: Email templates ────────────────────────────────────
+
+EMAIL_TEMPLATES = [
+    {
+        'key': 'email_submitted',
+        'label': 'Potvrzení přihlášky',
+        'description': 'Odesláno účastníkovi po odeslání přihlášky.',
+        'placeholders': ['name', 'event_name', 'event_year', 'contact_name_1', 'contact_name_2', 'contact_email'],
+    },
+    {
+        'key': 'email_approved',
+        'label': 'Schválení přihlášky',
+        'description': 'Odesláno účastníkovi po schválení přihlášky adminem.',
+        'placeholders': ['name', 'event_name', 'event_year', 'contact_name_1', 'contact_name_2', 'contact_email'],
+    },
+    {
+        'key': 'email_denied',
+        'label': 'Zamítnutí přihlášky',
+        'description': 'Odesláno účastníkovi po zamítnutí přihlášky adminem.',
+        'placeholders': ['name', 'reason', 'event_name', 'event_year', 'contact_name_1', 'contact_name_2', 'contact_email'],
+    },
+    {
+        'key': 'email_payment',
+        'label': 'Platební údaje',
+        'description': 'Odesláno účastníkovi s platebními údaji a QR kódem.',
+        'placeholders': ['name', 'bank_account', 'amount', 'vs', 'qr_code', 'event_name', 'event_year', 'contact_name_1', 'contact_name_2', 'contact_email'],
+    },
+]
+
+
+@app.route('/admin/email-sablony', methods=['GET', 'POST'])
+@login_required
+def admin_email_templates():
+    db = get_db()
+    if request.method == 'POST':
+        for tpl in EMAIL_TEMPLATES:
+            key = tpl['key']
+            subj = request.form.get(f'{key}_subject', '')
+            body = request.form.get(f'{key}_body', '')
+            db.execute('INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)',
+                       (f'{key}_subject', subj))
+            db.execute('INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)',
+                       (f'{key}_body', body))
+        db.commit()
+        flash('E-mailové šablony uloženy.', 'success')
+        return redirect(url_for('admin_email_templates'))
+
+    settings = get_settings()
+    return render_template('admin/email_templates.html',
+                           templates=EMAIL_TEMPLATES, settings=settings)
+
+
+@app.route('/admin/email-sablony/preview', methods=['POST'])
+@login_required
+def admin_email_template_preview():
+    """Return rendered email preview HTML."""
+    settings = get_settings()
+    subject = request.form.get('subject', '')
+    body = request.form.get('body', '')
+    # Fill placeholders with sample data
+    sample = {
+        'name': 'Jan Novák',
+        'event_name': settings.get('event_name', 'Cykloexpedice'),
+        'event_year': settings.get('event_year', '2025'),
+        'contact_name_1': settings.get('contact_name_1', 'Organizátor 1'),
+        'contact_name_2': settings.get('contact_name_2', 'Organizátor 2'),
+        'contact_email': settings.get('contact_email', 'info@example.cz'),
+        'reason': 'Kapacita expedice byla naplněna.',
+        'bank_account': settings.get('bank_account', '1234567890/0000'),
+        'amount': settings.get('payment_amount', '3500'),
+        'vs': '42',
+        'qr_code': '<p style="text-align:center;margin:25px 0;"><img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjUwIiBoZWlnaHQ9IjI1MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjUwIiBoZWlnaHQ9IjI1MCIgZmlsbD0iI2YzZjRmNiIgcng9IjEyIi8+PHRleHQgeD0iMTI1IiB5PSIxMjUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIiBmaWxsPSIjOWNhM2FmIiBmb250LWZhbWlseT0ic2Fucy1zZXJpZiIgZm9udC1zaXplPSIxNCI+UVIga8OzZDwvdGV4dD48L3N2Zz4=" alt="QR" style="width:250px;height:250px;"></p>',
+    }
+    for key, val in sample.items():
+        subject = subject.replace(f'{{{{{key}}}}}', val)
+        body = body.replace(f'{{{{{key}}}}}', val)
+    html = render_email_layout(body, settings)
+    return html
+
+
 # ── Admin: Site settings ──────────────────────────────────────────
 
 @app.route('/admin/nastaveni', methods=['GET', 'POST'])
@@ -1165,7 +1292,7 @@ def admin_settings():
         keys = ['event_name', 'event_year', 'event_days', 'event_km',
                 'event_elevation', 'event_dates', 'contact_name_1',
                 'contact_name_2', 'contact_email', 'photos_link', 'photos_text',
-                'payment_amount', 'bank_account', 'bank_iban', 'fio_api_token']
+                'payment_amount', 'bank_account', 'bank_iban']
         for key in keys:
             val = request.form.get(key, '')
             db.execute('INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)', (key, val))

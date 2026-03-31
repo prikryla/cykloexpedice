@@ -6,6 +6,7 @@
     <title>{% block title %}Administrace{% endblock %} – Cykloexpedice</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
     <script src="https://unpkg.com/alpinejs@3/dist/cdn.min.js" defer></script>
     <style>[x-cloak] { display: none !important; }</style>
     <script src="https://cdn.jsdelivr.net/npm/tinymce@6/tinymce.min.js"></script>
@@ -63,6 +64,10 @@
                 <a href="{{ url_for('admin_registrace') }}"
                    class="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-700 {% if 'registrace' in request.endpoint %}bg-gray-700 text-white{% endif %}">
                     <i class="bi bi-people"></i> Registrace
+                </a>
+                <a href="{{ url_for('admin_email_templates') }}"
+                   class="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-700 {% if 'email_templates' in request.endpoint %}bg-gray-700 text-white{% endif %}">
+                    <i class="bi bi-envelope"></i> E-mailové šablony
                 </a>
                 <a href="{{ url_for('admin_settings') }}"
                    class="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-700 {% if 'settings' in request.endpoint %}bg-gray-700 text-white{% endif %}">
