@@ -473,9 +473,13 @@ def save_file(file, prefix=''):
 
 @app.context_processor
 def inject_globals():
-    db = get_db()
-    etapy = db.execute('SELECT number, title FROM etapy ORDER BY number').fetchall()
-    settings = get_settings()
+    try:
+        db = get_db()
+        etapy = db.execute('SELECT number, title FROM etapy ORDER BY number').fetchall()
+        settings = get_settings()
+    except Exception:
+        etapy = []
+        settings = {}
     return dict(etapy_nav=etapy, settings=settings, now=datetime.now())
 
 
@@ -483,7 +487,16 @@ def inject_globals():
 
 def _render_error(code, title, message):
     """Render a standalone error page that doesn't depend on the database."""
-    return render_template('error.html', code=code, title=title, message=message), code
+    try:
+        return render_template('error.html', code=code, title=title, message=message), code
+    except Exception:
+        return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><title>{title}</title>
+        <style>body{{font-family:sans-serif;background:#1c1c1b;color:#fff;display:flex;align-items:center;
+        justify-content:center;min-height:100vh;margin:0}}div{{text-align:center}}
+        h1{{font-size:6rem;color:#fbb01f33;margin:0}}h2{{margin:8px 0 16px}}
+        a{{color:#fbb01f;text-decoration:none}}</style></head>
+        <body><div><h1>{code}</h1><h2>{title}</h2><p style="color:#9ca3af">{message}</p>
+        <p><a href="/">Zpět na úvod</a></p></div></body></html>""", code
 
 
 @app.errorhandler(404)
@@ -1370,7 +1383,8 @@ def admin_settings():
 
 # ── Init & Run ────────────────────────────────────────────────────
 
-init_db()
+if not os.environ.get('TESTING'):
+    init_db()
 
 
 if __name__ == '__main__':
