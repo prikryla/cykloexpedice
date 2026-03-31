@@ -114,6 +114,7 @@ def app(monkeypatch):
     monkeypatch.setattr(flask_app, '_connect_db', fake_connect)
     flask_app.app.config['TESTING'] = True
     flask_app.app.config['SECRET_KEY'] = 'test-secret'
+    flask_app.limiter.enabled = False
 
     # Initialize tables
     flask_app.init_db()

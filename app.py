@@ -19,12 +19,16 @@ from flask import (
     session, flash, g, abort, send_from_directory
 )
 import bcrypt
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from vokativ import vokativ as _vokativ
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__), 'static', 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
+
+limiter = Limiter(get_remote_address, app=app, default_limits=[], storage_uri="memory://")
 
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
 FIO_API_TOKEN = os.environ.get('FIO_API_TOKEN', '')
@@ -247,9 +251,14 @@ def init_db():
 
 
 def get_settings():
+    cached = g.get('_settings_cache')
+    if cached is not None:
+        return cached
     db = get_db()
     rows = db.execute('SELECT key, value FROM site_settings').fetchall()
-    return {row['key']: row['value'] for row in rows}
+    result = {row['key']: row['value'] for row in rows}
+    g._settings_cache = result
+    return result
 
 
 # ── Email helper ──────────────────────────────────────────────────
@@ -514,6 +523,12 @@ def internal_error(e):
                          'Omlouváme se, došlo k neočekávané chybě. Zkuste to prosím později.')
 
 
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    return _render_error(429, 'Příliš mnoho požadavků',
+                         'Překročili jste limit požadavků. Zkuste to prosím za chvíli.')
+
+
 @app.errorhandler(Exception)
 def handle_exception(e):
     if isinstance(e, psycopg2.OperationalError):
@@ -581,6 +596,7 @@ def kontakt():
 
 
 @app.route('/registrace', methods=['GET', 'POST'])
+@limiter.limit("5 per minute", methods=["POST"])
 def registrace():
     if request.method == 'POST':
         name = request.form.get('name', '').strip()
@@ -619,6 +635,7 @@ def registrace():
 # ── Admin auth routes ─────────────────────────────────────────────
 
 @app.route('/admin/login', methods=['GET', 'POST'])
+@limiter.limit("10 per minute", methods=["POST"])
 def admin_login():
     if request.method == 'POST':
         username = request.form.get('username', '').strip().lower()
@@ -750,6 +767,7 @@ def admin_profile():
 # ── Forgot / Reset password ───────────────────────────────────────
 
 @app.route('/admin/forgot-password', methods=['GET', 'POST'])
+@limiter.limit("3 per minute", methods=["POST"])
 def admin_forgot_password():
     if request.method == 'POST':
         username = request.form.get('username', '').strip().lower()
@@ -796,6 +814,7 @@ def admin_forgot_password():
 
 
 @app.route('/admin/reset-password/<token>', methods=['GET', 'POST'])
+@limiter.limit("5 per minute", methods=["POST"])
 def admin_reset_password(token):
     db = get_db()
     row = db.execute(
