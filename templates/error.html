@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} – Cykloexpedice</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
+    <script>
+    tailwind.config = {
+        theme: {
+            extend: {
+                colors: {
+                    gold: { 500: '#fbb01f' },
+                    dark: { 900: '#1c1c1b' },
+                },
+                fontFamily: {
+                    display: ['Oswald', 'sans-serif'],
+                    body: ['Montserrat', 'sans-serif'],
+                },
+            }
+        }
+    }
+    </script>
+</head>
+<body class="bg-dark-900 min-h-screen flex items-center justify-center font-body">
+    <div class="max-w-lg mx-auto px-6 text-center">
+        <div class="font-display text-[8rem] leading-none text-gold-500/20 mb-2">{{ code }}</div>
+        <h1 class="font-display text-3xl md:text-4xl text-white tracking-wide mb-4">{{ title }}</h1>
+        <div class="w-16 h-1 bg-gold-500 mx-auto rounded mb-6"></div>
+        <p class="text-gray-400 text-lg leading-relaxed mb-10">{{ message }}</p>
+        <a href="/" class="inline-block bg-gold-500 text-dark-900 font-bold px-8 py-3 rounded-full hover:shadow-lg transition text-sm uppercase tracking-wider">
+            Zpět na úvod
+        </a>
+    </div>
+</body>
+</html>

@@ -481,9 +481,35 @@ def inject_globals():
 
 # ── Error handlers ────────────────────────────────────────────────
 
+def _render_error(code, title, message):
+    """Render a standalone error page that doesn't depend on the database."""
+    return render_template('error.html', code=code, title=title, message=message), code
+
+
 @app.errorhandler(404)
 def page_not_found(e):
-    return render_template('404.html'), 404
+    try:
+        return render_template('404.html'), 404
+    except Exception:
+        return _render_error(404, 'Stránka nenalezena',
+                             'Omlouváme se, ale stránka, kterou hledáte, neexistuje.')
+
+
+@app.errorhandler(500)
+def internal_error(e):
+    return _render_error(500, 'Chyba serveru',
+                         'Omlouváme se, došlo k neočekávané chybě. Zkuste to prosím později.')
+
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    if isinstance(e, psycopg2.OperationalError):
+        print(f'[DB ERROR] {e}')
+        return _render_error(503, 'Služba nedostupná',
+                             'Připojení k databázi se nezdařilo. Zkuste to prosím za chvíli.')
+    print(f'[ERROR] {type(e).__name__}: {e}')
+    return _render_error(500, 'Chyba serveru',
+                         'Omlouváme se, došlo k neočekávané chybě. Zkuste to prosím později.')
 
 
 # ── Public routes ─────────────────────────────────────────────────
