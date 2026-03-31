@@ -1,9 +1,15 @@
 {% extends "admin/base.html" %}
 {% block title %}Registrace{% endblock %}
+{% block main_class %}{% endblock %}
 
 {% block content %}
 <div class="flex items-center justify-between mb-6">
     <h1 class="text-2xl font-bold">Registrace</h1>
+    <form method="POST" action="{{ url_for('admin_check_payments') }}">
+        <button type="submit" class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition">
+            <i class="bi bi-arrow-repeat"></i> Zkontrolovat platby
+        </button>
+    </form>
 </div>
 
 <!-- Status tabs -->
@@ -54,6 +60,8 @@
                     <th class="px-4 py-3">E-mail</th>
                     <th class="px-4 py-3">Telefon</th>
                     <th class="px-4 py-3">Poznámka</th>
+                    <th class="px-4 py-3">VS</th>
+                    <th class="px-4 py-3">Platba</th>
                     <th class="px-4 py-3">Datum</th>
                     <th class="px-4 py-3 text-right">Akce</th>
                 </tr>
@@ -81,6 +89,16 @@
                         <div class="mt-1 text-xs text-red-500"><i class="bi bi-chat-left-text"></i> {{ r.admin_note }}</div>
                         {% endif %}
                     </td>
+                    <td class="px-4 py-3 text-gray-500 text-sm font-mono">{{ r.variable_symbol or '–' }}</td>
+                    <td class="px-4 py-3">
+                        {% if r.payment_status == 'paid' %}
+                        <span class="px-2.5 py-1 bg-green-100 text-green-700 text-xs rounded-full font-semibold">Zaplaceno</span>
+                        {% elif r.payment_status == 'pending' %}
+                        <span class="px-2.5 py-1 bg-yellow-100 text-yellow-700 text-xs rounded-full font-semibold" title="QR odesláno: {{ r.qr_sent_at }}">Čeká na platbu</span>
+                        {% else %}
+                        <span class="px-2.5 py-1 bg-gray-100 text-gray-500 text-xs rounded-full">–</span>
+                        {% endif %}
+                    </td>
                     <td class="px-4 py-3 text-gray-500 text-sm">{{ r.created_at }}</td>
                     <td class="px-4 py-3 text-right whitespace-nowrap">
                         <div class="flex items-center justify-end gap-2">
@@ -94,6 +112,13 @@
                                class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-700 text-sm font-medium rounded-lg hover:bg-amber-100 transition" title="Zamítnout">
                                 <i class="bi bi-x-circle"></i> Zamítnout
                             </a>
+                            {% endif %}
+                            {% if r.status == 'approved' and r.payment_status != 'paid' %}
+                            <form method="POST" action="{{ url_for('admin_registrace_send_payment', id=r.id) }}" class="inline">
+                                <button class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 text-sm font-medium rounded-lg hover:bg-blue-100 transition" title="Odeslat platební QR">
+                                    <i class="bi bi-qr-code"></i> {% if r.payment_status == 'pending' %}Znovu QR{% else %}Odeslat QR{% endif %}
+                                </button>
+                            </form>
                             {% endif %}
                             <form method="POST" action="{{ url_for('admin_registrace_delete', id=r.id) }}" class="inline">
                                 <button type="button"

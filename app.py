@@ -1,15 +1,19 @@
 import os
+import io
 import json
+import base64
 import secrets
 import smtplib
 import ssl
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from datetime import datetime
+from datetime import datetime, date
 from functools import wraps
 from threading import Thread
 
 import psycopg2
+import qrcode
+import requests
 from flask import (
     Flask, render_template, request, redirect, url_for,
     session, flash, g, abort, send_from_directory
@@ -133,10 +137,25 @@ def init_db():
             id SERIAL PRIMARY KEY, name TEXT NOT NULL,
             email TEXT, phone TEXT, note TEXT,
             status TEXT DEFAULT 'pending', admin_note TEXT,
-            decided_at TIMESTAMP, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''',
+            decided_at TIMESTAMP, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            variable_symbol INTEGER, payment_status TEXT DEFAULT 'none',
+            payment_amount REAL, qr_sent_at TIMESTAMP)''',
     ]:
         db.execute(stmt)
     db.commit()
+
+    # Add payment columns to registrace if they don't exist (migration for existing DBs)
+    for col_stmt in [
+        "ALTER TABLE registrace ADD COLUMN variable_symbol INTEGER",
+        "ALTER TABLE registrace ADD COLUMN payment_status TEXT DEFAULT 'none'",
+        "ALTER TABLE registrace ADD COLUMN payment_amount REAL",
+        "ALTER TABLE registrace ADD COLUMN qr_sent_at TIMESTAMP",
+    ]:
+        try:
+            db.execute(col_stmt)
+            db.commit()
+        except Exception:
+            db._conn.rollback()
 
     # Create default admins if they don't exist
     for username in ['michal', 'adam']:
@@ -158,6 +177,10 @@ def init_db():
         'photos_link': 'https://photos.app.goo.gl/xvrkFtWUiQu31a3T9',
         'photos_text': 'Pokud někdo máte ještě fotky, které chcete sdílet s ostatními, nahrajte je prosím do galerie po kliku na tlačítko.',
         'fotky_enabled': '1',
+        'payment_amount': '3500',
+        'bank_account': '2703473997/2010',
+        'bank_iban': 'CZ1620100000002703473997',
+        'fio_api_token': '72vRcOTOVxCajfv2IaMNp18e6DoXLeXYHDku0iWUsoCbyXc2bRbZavcvPbDsr0fU',
     }
     for key, value in defaults.items():
         existing = db.execute('SELECT key FROM site_settings WHERE key = ?', (key,)).fetchone()
@@ -248,6 +271,79 @@ def send_email(to_email, subject, html_body, sender_username=None):
             print(f'[EMAIL ERROR] {e}')
 
     Thread(target=_send, daemon=True).start()
+
+
+# ── Payment helpers ───────────────────────────────────────────
+
+def generate_payment_qr(iban, amount, vs, message=''):
+    """Generate a SPAYD QR code as base64-encoded PNG."""
+    spayd = f"SPD*1.0*ACC:{iban}*AM:{amount:.2f}*CC:CZK*X-VS:{vs}"
+    if message:
+        spayd += f"*MSG:{message}"
+    qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=8, border=4)
+    qr.add_data(spayd)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buf = io.BytesIO()
+    img.save(buf, format='PNG')
+    return base64.b64encode(buf.getvalue()).decode()
+
+
+def check_fio_payments():
+    """Check Fio Bank API for new incoming payments and match them to pending registrations."""
+    db = _connect_db()
+    try:
+        rows = db.execute('SELECT key, value FROM site_settings').fetchall()
+        settings = {row['key']: row['value'] for row in rows}
+        token = settings.get('fio_api_token', '')
+        if not token:
+            return
+
+        # Use date range: last 30 days
+        date_from = date.today().replace(day=1).isoformat()
+        date_to = date.today().isoformat()
+        url = f"https://fioapi.fio.cz/v1/rest/periods/{token}/{date_from}/{date_to}/transactions.json"
+
+        resp = requests.get(url, timeout=30)
+        if resp.status_code != 200:
+            print(f'[FIO API] HTTP {resp.status_code}')
+            return
+
+        data = resp.json()
+        tx_list = data.get('accountStatement', {}).get('transactionList', {})
+        transactions = tx_list.get('transaction') if tx_list else None
+        if not transactions:
+            return
+
+        # Get all pending registrations
+        pending = db.execute(
+            "SELECT id, variable_symbol, payment_amount FROM registrace WHERE payment_status = 'pending'"
+        ).fetchall()
+        vs_map = {str(r['variable_symbol']): r for r in pending if r['variable_symbol']}
+
+        for tx in transactions:
+            # column1 = amount, column5 = VS
+            amount_col = tx.get('column1')
+            vs_col = tx.get('column5')
+            if not amount_col or not vs_col:
+                continue
+            amount = amount_col.get('value', 0) if amount_col else 0
+            vs_val = str(vs_col.get('value', '')) if vs_col else ''
+            if amount > 0 and vs_val in vs_map:
+                reg = vs_map[vs_val]
+                if amount >= (reg['payment_amount'] or 0):
+                    db.execute(
+                        "UPDATE registrace SET payment_status = 'paid' WHERE id = ?",
+                        (reg['id'],)
+                    )
+                    print(f'[FIO] Payment matched: VS={vs_val}, amount={amount}')
+
+        db.commit()
+    except Exception as e:
+        print(f'[FIO API ERROR] {e}')
+    finally:
+        db.close()
+
 
 
 # ── Auth helpers ──────────────────────────────────────────────────
@@ -972,6 +1068,93 @@ def admin_registrace_delete(id):
     return redirect(url_for('admin_registrace'))
 
 
+@app.route('/admin/registrace/<int:id>/send-payment', methods=['POST'])
+@login_required
+def admin_registrace_send_payment(id):
+    db = get_db()
+    reg = db.execute('SELECT * FROM registrace WHERE id = ?', (id,)).fetchone()
+    if not reg:
+        abort(404)
+    if reg['status'] != 'approved':
+        flash('Platební QR lze odeslat pouze u schválených registrací.', 'error')
+        return redirect(url_for('admin_registrace'))
+    if not reg['email']:
+        flash('Registrace nemá zadaný e-mail.', 'error')
+        return redirect(url_for('admin_registrace'))
+
+    settings = get_settings()
+    amount = float(settings.get('payment_amount', '0'))
+    iban = settings.get('bank_iban', '')
+    bank_account = settings.get('bank_account', '')
+
+    if not iban or not amount:
+        flash('Nejsou nastaveny platební údaje (IBAN, částka). Zkontrolujte nastavení.', 'error')
+        return redirect(url_for('admin_registrace'))
+
+    vs = reg['variable_symbol'] or reg['id']
+    event_name = settings.get('event_name', 'Cykloexpedice')
+    event_year = settings.get('event_year', '')
+
+    # Generate QR code
+    qr_b64 = generate_payment_qr(iban, amount, vs, f'{event_name} {event_year}')
+
+    # Update registration
+    db.execute(
+        "UPDATE registrace SET variable_symbol = ?, payment_status = 'pending', "
+        "payment_amount = ?, qr_sent_at = ? WHERE id = ?",
+        (vs, amount, datetime.now(), id)
+    )
+    db.commit()
+
+    # Send payment email
+    html = f"""
+    <div style="font-family: 'Montserrat', Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: #1c1c1b; padding: 30px; text-align: center;">
+            <h1 style="color: #fbb01f; font-size: 28px; margin: 0;">
+                {event_name} {event_year}
+            </h1>
+        </div>
+        <div style="padding: 30px; background: #ffffff;">
+            <h2 style="color: #99b20f;">Platební údaje</h2>
+            <p>Dobrý den, <strong>{reg['name']}</strong>,</p>
+            <p>vaše přihláška na {event_name} {event_year} byla schválena. Níže naleznete platební údaje.</p>
+
+            <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; margin: 20px 0;">
+                <table style="width: 100%; font-size: 15px;">
+                    <tr><td style="padding: 6px 0; color: #6b7280;">Číslo účtu:</td><td style="padding: 6px 0; font-weight: 600;">{bank_account}</td></tr>
+                    <tr><td style="padding: 6px 0; color: #6b7280;">Částka:</td><td style="padding: 6px 0; font-weight: 600;">{amount:.0f} Kč</td></tr>
+                    <tr><td style="padding: 6px 0; color: #6b7280;">Variabilní symbol:</td><td style="padding: 6px 0; font-weight: 600;">{vs}</td></tr>
+                </table>
+            </div>
+
+            <p style="text-align: center; margin: 25px 0;">
+                <img src="data:image/png;base64,{qr_b64}" alt="QR platba" style="width: 250px; height: 250px;">
+            </p>
+            <p style="text-align: center; font-size: 13px; color: #6b7280;">Naskenujte QR kód v bankovní aplikaci pro rychlou platbu.</p>
+
+            <p style="margin-top: 20px;">Těšíme se na vás!<br>
+            {settings.get('contact_name_1', '')} & {settings.get('contact_name_2', '')}</p>
+        </div>
+        <div style="background: #f3f3f2; padding: 15px; text-align: center; font-size: 12px; color: #999;">
+            {settings.get('contact_email', '')}
+        </div>
+    </div>
+    """
+    send_email(reg['email'], f'Platební údaje – {event_name} {event_year}', html,
+               sender_username=session.get('admin_username'))
+
+    flash(f'Platební QR kód odeslán na {reg["email"]} (VS: {vs}).', 'success')
+    return redirect(url_for('admin_registrace'))
+
+
+@app.route('/admin/registrace/check-payments', methods=['POST'])
+@login_required
+def admin_check_payments():
+    check_fio_payments()
+    flash('Platby zkontrolovány.', 'success')
+    return redirect(url_for('admin_registrace'))
+
+
 # ── Admin: Site settings ──────────────────────────────────────────
 
 @app.route('/admin/nastaveni', methods=['GET', 'POST'])
@@ -981,7 +1164,8 @@ def admin_settings():
     if request.method == 'POST':
         keys = ['event_name', 'event_year', 'event_days', 'event_km',
                 'event_elevation', 'event_dates', 'contact_name_1',
-                'contact_name_2', 'contact_email', 'photos_link', 'photos_text']
+                'contact_name_2', 'contact_email', 'photos_link', 'photos_text',
+                'payment_amount', 'bank_account', 'bank_iban', 'fio_api_token']
         for key in keys:
             val = request.form.get(key, '')
             db.execute('INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)', (key, val))
@@ -997,6 +1181,7 @@ def admin_settings():
 # ── Init & Run ────────────────────────────────────────────────────
 
 init_db()
+
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
