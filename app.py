@@ -1,6 +1,7 @@
 import os
 import io
 import json
+import re
 import base64
 import secrets
 import smtplib
@@ -27,14 +28,24 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__), 'static', 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
 limiter = Limiter(get_remote_address, app=app, default_limits=[], storage_uri="memory://")
+
+ALLOWED_UPLOAD_EXTENSIONS = {'jpg', 'jpeg', 'png', 'gif', 'webp', 'gpx', 'zip', 'pdf'}
 
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
 FIO_API_TOKEN = os.environ.get('FIO_API_TOKEN', '')
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
+
+@app.after_request
+def set_security_headers(response):
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    return response
 
 
 # ── Database abstraction ─────────────────────────────────────────
@@ -73,9 +84,16 @@ class PgConnectionWrapper:
 
     def execute(self, query, params=None):
         query = query.replace('?', '%s')
-        query = query.replace('INSERT OR REPLACE INTO site_settings (key, value) VALUES (%s, %s)',
-                              'INSERT INTO site_settings (key, value) VALUES (%s, %s) '
-                              'ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value')
+        m = re.match(
+            r'INSERT OR REPLACE INTO (\w+)\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\)',
+            query, re.IGNORECASE,
+        )
+        if m:
+            table, col_str, vals = m.group(1), m.group(2), m.group(3)
+            cols = [c.strip() for c in col_str.split(',')]
+            updates = ', '.join(f'{c} = EXCLUDED.{c}' for c in cols[1:])
+            query = (f'INSERT INTO {table} ({col_str}) VALUES ({vals}) '
+                     f'ON CONFLICT ({cols[0]}) DO UPDATE SET {updates}')
         cur = self._conn.cursor()
         cur.execute(query, params or ())
         return PgCursorWrapper(cur)
@@ -189,43 +207,71 @@ def init_db():
         'bank_iban': 'CZ1620100000002703473997',
         # Email templates
         'email_submitted_subject': 'Přihláška přijata – {{event_name}} {{event_year}}',
-        'email_submitted_body': '<h2 style="color: #99b20f; margin: 0 0 20px 0;">Přihláška přijata</h2>'
-            '<p>Ahoj <strong>{{name_vocative}}</strong>,</p>'
-            '<p>děkujeme za vaši přihlášku na <strong>{{event_name}} {{event_year}}</strong>. '
+        'email_submitted_body': '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
+            '<tr><td align="center" style="padding-bottom:24px;">'
+            '<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>'
+            '<td style="background-color:#99b20f;padding:8px 24px;font-family:Arial,sans-serif;font-size:13px;font-weight:700;color:#ffffff;text-transform:uppercase;letter-spacing:2px;">PŘIHLÁŠKA PŘIJATA</td>'
+            '</tr></table></td></tr>'
+            '<tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:26px;color:#374151;">'
+            '<p style="margin:0 0 16px;">Ahoj <strong>{{name_vocative}}</strong>,</p>'
+            '<p style="margin:0 0 16px;">děkujeme za vaši přihlášku na <strong>{{event_name}} {{event_year}}</strong>. '
             'Vaše přihláška byla úspěšně zaregistrována.</p>'
-            '<p>Jakmile bude kapacita naplněna, budeme vás kontaktovat s dalšími informacemi.</p>'
-            '<p style="margin-top: 24px;">S pozdravem,<br>{{contact_name_1}} & {{contact_name_2}}</p>',
+            '<p style="margin:0;">Jakmile bude kapacita naplněna, budeme vás kontaktovat s dalšími informacemi.</p>'
+            '</td></tr></table>',
         'email_approved_subject': 'Přihláška schválena – {{event_name}} {{event_year}}',
-        'email_approved_body': '<h2 style="color: #99b20f; margin: 0 0 20px 0;">Vaše přihláška byla schválena!</h2>'
-            '<p>Ahoj <strong>{{name_vocative}}</strong>,</p>'
-            '<p>s radostí vám oznamujeme, že vaše přihláška na <strong>{{event_name}} {{event_year}}</strong> '
+        'email_approved_body': '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
+            '<tr><td align="center" style="padding-bottom:24px;">'
+            '<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>'
+            '<td style="background-color:#99b20f;padding:8px 24px;font-family:Arial,sans-serif;font-size:13px;font-weight:700;color:#ffffff;text-transform:uppercase;letter-spacing:2px;">PŘIHLÁŠKA SCHVÁLENA</td>'
+            '</tr></table></td></tr>'
+            '<tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:26px;color:#374151;">'
+            '<p style="margin:0 0 16px;">Ahoj <strong>{{name_vocative}}</strong>,</p>'
+            '<p style="margin:0 0 16px;">s radostí vám oznamujeme, že vaše přihláška na <strong>{{event_name}} {{event_year}}</strong> '
             'byla <strong>schválena</strong>.</p>'
-            '<p>Brzy vás budeme kontaktovat s dalšími podrobnostmi k expedici.</p>'
-            '<p style="margin-top: 24px;">Těšíme se na vás!<br>{{contact_name_1}} & {{contact_name_2}}</p>',
+            '<p style="margin:0;">Brzy vás budeme kontaktovat s dalšími podrobnostmi k expedici.</p>'
+            '</td></tr></table>',
         'email_denied_subject': 'Přihláška zamítnuta – {{event_name}} {{event_year}}',
-        'email_denied_body': '<h2 style="color: #e53e3e; margin: 0 0 20px 0;">Přihláška zamítnuta</h2>'
-            '<p>Ahoj <strong>{{name_vocative}}</strong>,</p>'
-            '<p>bohužel vám musíme sdělit, že vaše přihláška na <strong>{{event_name}} {{event_year}}</strong> '
+        'email_denied_body': '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
+            '<tr><td align="center" style="padding-bottom:24px;">'
+            '<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>'
+            '<td style="background-color:#e53e3e;padding:8px 24px;font-family:Arial,sans-serif;font-size:13px;font-weight:700;color:#ffffff;text-transform:uppercase;letter-spacing:2px;">PŘIHLÁŠKA ZAMÍTNUTA</td>'
+            '</tr></table></td></tr>'
+            '<tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:26px;color:#374151;">'
+            '<p style="margin:0 0 16px;">Ahoj <strong>{{name_vocative}}</strong>,</p>'
+            '<p style="margin:0 0 16px;">bohužel vám musíme sdělit, že vaše přihláška na <strong>{{event_name}} {{event_year}}</strong> '
             'byla <strong>zamítnuta</strong>.</p>'
-            '<div style="background: #fff5f5; border-left: 4px solid #e53e3e; padding: 15px; margin: 20px 0; border-radius: 0 8px 8px 0;">'
-            '<strong>Důvod:</strong><br>{{reason}}</div>'
-            '<p>Pokud máte dotazy, neváhejte nás kontaktovat na {{contact_email}}.</p>'
-            '<p style="margin-top: 24px;">S pozdravem,<br>{{contact_name_1}} & {{contact_name_2}}</p>',
+            '</td></tr>'
+            '<tr><td style="padding:0 0 20px;">'
+            '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
+            '<tr><td style="border-left:4px solid #e53e3e;padding:15px;background-color:#fff5f5;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#374151;">'
+            '<strong>Důvod:</strong><br>{{reason}}</td></tr></table></td></tr>'
+            '<tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:26px;color:#374151;">'
+            '<p style="margin:0;">Pokud máte dotazy, neváhejte nás kontaktovat na {{contact_email}}.</p>'
+            '</td></tr></table>',
         'email_payment_subject': 'Platební údaje – {{event_name}} {{event_year}}',
-        'email_payment_body': '<h2 style="color: #99b20f; margin: 0 0 20px 0;">Platební údaje</h2>'
-            '<p>Ahoj <strong>{{name_vocative}}</strong>,</p>'
-            '<p>vaše přihláška na <strong>{{event_name}} {{event_year}}</strong> byla schválena. '
+        'email_payment_body': '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
+            '<tr><td align="center" style="padding-bottom:24px;">'
+            '<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>'
+            '<td style="background-color:#fbb01f;padding:8px 24px;font-family:Arial,sans-serif;font-size:13px;font-weight:700;color:#1c1c1b;text-transform:uppercase;letter-spacing:2px;">PLATEBNÍ ÚDAJE</td>'
+            '</tr></table></td></tr>'
+            '<tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:26px;color:#374151;">'
+            '<p style="margin:0 0 16px;">Ahoj <strong>{{name_vocative}}</strong>,</p>'
+            '<p style="margin:0 0 20px;">vaše přihláška na <strong>{{event_name}} {{event_year}}</strong> byla schválena. '
             'Níže naleznete platební údaje.</p>'
-            '<div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; margin: 20px 0;">'
-            '<table style="width: 100%; font-size: 15px;">'
-            '<tr><td style="padding: 8px 0; color: #6b7280;">Číslo účtu:</td><td style="padding: 8px 0; font-weight: 700;">{{bank_account}}</td></tr>'
-            '<tr><td style="padding: 8px 0; color: #6b7280;">Částka:</td><td style="padding: 8px 0; font-weight: 700;">{{amount}} Kč</td></tr>'
-            '<tr><td style="padding: 8px 0; color: #6b7280;">Variabilní symbol:</td><td style="padding: 8px 0; font-weight: 700;">{{vs}}</td></tr>'
-            '<tr><td style="padding: 8px 0; color: #6b7280;">Poznámka:</td><td style="padding: 8px 0; font-weight: 700;">{{payment_note}}</td></tr>'
-            '</table></div>'
-            '{{qr_code}}'
-            '<p style="text-align: center; font-size: 13px; color: #6b7280;">Naskenujte QR kód v bankovní aplikaci pro rychlou platbu.</p>'
-            '<p style="margin-top: 24px;">Těšíme se na vás!<br>{{contact_name_1}} & {{contact_name_2}}</p>',
+            '</td></tr>'
+            '<tr><td style="padding:0 0 20px;">'
+            '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e5e7eb;">'
+            '<tr><td bgcolor="#f9fafb" style="background-color:#f9fafb;padding:20px;">'
+            '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
+            '<tr><td style="padding:8px 0;color:#6b7280;font-family:Arial,Helvetica,sans-serif;font-size:15px;">Číslo účtu:</td><td style="padding:8px 0;font-weight:700;font-family:Arial,Helvetica,sans-serif;font-size:15px;">{{bank_account}}</td></tr>'
+            '<tr><td style="padding:8px 0;color:#6b7280;font-family:Arial,Helvetica,sans-serif;font-size:15px;">Částka:</td><td style="padding:8px 0;font-weight:700;font-family:Arial,Helvetica,sans-serif;font-size:15px;">{{amount}} Kč</td></tr>'
+            '<tr><td style="padding:8px 0;color:#6b7280;font-family:Arial,Helvetica,sans-serif;font-size:15px;">Variabilní symbol:</td><td style="padding:8px 0;font-weight:700;font-family:Arial,Helvetica,sans-serif;font-size:15px;">{{vs}}</td></tr>'
+            '<tr><td style="padding:8px 0;color:#6b7280;font-family:Arial,Helvetica,sans-serif;font-size:15px;">Poznámka:</td><td style="padding:8px 0;font-weight:700;font-family:Arial,Helvetica,sans-serif;font-size:15px;">{{payment_note}}</td></tr>'
+            '</table></td></tr></table></td></tr>'
+            '<tr><td align="center" style="padding:0 0 8px;">{{qr_code}}</td></tr>'
+            '<tr><td align="center" style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#6b7280;">'
+            '<p style="margin:0;">Naskenujte QR kód v bankovní aplikaci pro rychlou platbu.</p>'
+            '</td></tr></table>',
     }
     for key, value in defaults.items():
         existing = db.execute('SELECT key FROM site_settings WHERE key = ?', (key,)).fetchone()
@@ -245,6 +291,13 @@ def init_db():
             existing = db.execute('SELECT key FROM site_settings WHERE key = ?', (key,)).fetchone()
             if not existing:
                 db.execute('INSERT INTO site_settings (key, value) VALUES (?, ?)', (key, value))
+
+    # Migrate old div-based email templates to table-based
+    email_keys = ['email_submitted_body', 'email_approved_body', 'email_denied_body', 'email_payment_body']
+    for key in email_keys:
+        row = db.execute('SELECT value FROM site_settings WHERE key = ?', (key,)).fetchone()
+        if row and 'role="presentation"' not in row['value']:
+            db.execute('INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)', (key, defaults[key]))
 
     db.commit()
     db.close()
@@ -326,35 +379,67 @@ def send_email(to_email, subject, html_body, sender_username=None):
 # ── Email template helpers ────────────────────────────────────
 
 def render_email_layout(body_html, settings):
-    """Wrap email body in a branded layout matching the website design."""
+    """Wrap email body in a branded table-based layout for email client compatibility."""
     event_name = settings.get('event_name', 'Cykloexpedice')
     event_year = settings.get('event_year', '')
     contact_email = settings.get('contact_email', '')
-    contact_name_1 = settings.get('contact_name_1', '')
-    contact_name_2 = settings.get('contact_name_2', '')
+    contact_first_1 = settings.get('contact_name_1', '').split()[0] if settings.get('contact_name_1') else ''
+    contact_first_2 = settings.get('contact_name_2', '').split()[0] if settings.get('contact_name_2') else ''
     return f"""<!DOCTYPE html>
-<html><head><meta charset="utf-8">
-<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
-</head><body style="margin: 0; padding: 0; background-color: #f5f5f4;">
-<div style="max-width: 600px; margin: 0 auto; font-family: 'Montserrat', Arial, sans-serif;">
-    <!-- Header -->
-    <div style="background: #1c1c1b; padding: 40px 30px 32px; text-align: center;">
-        <h1 style="font-family: 'Oswald', Arial Black, sans-serif; color: #fbb01f; font-size: 32px; margin: 0; letter-spacing: 3px; font-weight: 700; text-transform: uppercase;">
-            {event_name}
-        </h1>
-        <div style="width: 60px; height: 4px; background: #fbb01f; margin: 16px auto 0; border-radius: 2px;"></div>
-        <p style="color: #9ca3af; font-size: 14px; margin: 12px 0 0; letter-spacing: 1px;">{event_year}</p>
-    </div>
-    <!-- Body -->
-    <div style="padding: 36px 30px; background: #ffffff; font-size: 15px; line-height: 1.7; color: #374151;">
-        {body_html}
-    </div>
-    <!-- Footer -->
-    <div style="background: #1c1c1b; padding: 28px 30px; text-align: center;">
-        <p style="color: #9ca3af; font-size: 13px; margin: 0 0 8px;">{contact_name_1} & {contact_name_2}</p>
-        <a href="mailto:{contact_email}" style="color: #fbb01f; font-size: 13px; text-decoration: none;">{contact_email}</a>
-    </div>
-</div>
+<html xmlns="http://www.w3.org/1999/xhtml"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<title>{event_name}</title>
+<!--[if mso]><style>table,td{{font-family:Arial,sans-serif!important;}}</style><![endif]-->
+</head>
+<body style="margin:0;padding:0;background-color:#1c1c1b;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#1c1c1b;">
+<tr><td align="center" style="padding:20px 10px;">
+
+<!-- Main container -->
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;">
+
+<!-- Header -->
+<tr><td align="center" bgcolor="#1c1c1b" style="background-color:#1c1c1b;padding:44px 40px 36px;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center">
+    <h1 style="font-family:'Oswald',Arial Black,Impact,sans-serif;color:#fbb01f;font-size:28px;margin:0;letter-spacing:4px;font-weight:700;text-transform:uppercase;mso-line-height-rule:exactly;line-height:34px;">
+      {event_name}
+    </h1>
+  </td></tr>
+  <tr><td align="center" style="padding-top:14px;">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+      <td style="width:48px;height:3px;background-color:#fbb01f;font-size:1px;line-height:1px;">&nbsp;</td>
+    </tr></table>
+  </td></tr>
+  <tr><td align="center" style="padding-top:10px;">
+    <p style="font-family:'Montserrat',Arial,Helvetica,sans-serif;color:#6b7280;font-size:13px;margin:0;letter-spacing:2px;text-transform:uppercase;">{event_year}</p>
+  </td></tr></table>
+</td></tr>
+
+<!-- Gold accent line -->
+<tr><td style="height:4px;background-color:#fbb01f;font-size:1px;line-height:1px;">&nbsp;</td></tr>
+
+<!-- Body -->
+<tr><td bgcolor="#fefdf8" style="background-color:#fefdf8;padding:40px 40px 44px;font-family:'Montserrat',Arial,Helvetica,sans-serif;font-size:15px;line-height:26px;color:#374151;">
+  {body_html}
+</td></tr>
+
+<!-- Footer divider -->
+<tr><td style="height:2px;background-color:#fbb01f33;font-size:1px;line-height:1px;">&nbsp;</td></tr>
+
+<!-- Footer -->
+<tr><td bgcolor="#2a2a29" style="background-color:#2a2a29;padding:28px 40px;text-align:center;">
+  <p style="font-family:'Montserrat',Arial,Helvetica,sans-serif;color:#9ca3af;font-size:13px;margin:0 0 6px;font-weight:600;">{contact_first_1} a {contact_first_2}</p>
+  <a href="mailto:{contact_email}" style="font-family:'Montserrat',Arial,Helvetica,sans-serif;color:#fbb01f;font-size:13px;text-decoration:none;letter-spacing:0.5px;">{contact_email}</a>
+</td></tr>
+
+<!-- Copyright -->
+<tr><td bgcolor="#1c1c1b" style="background-color:#1c1c1b;padding:16px 40px;text-align:center;">
+  <p style="font-family:'Montserrat',Arial,Helvetica,sans-serif;color:#4b5563;font-size:11px;margin:0;">&copy; 2014&ndash;2026 Cykloexpedice</p>
+</td></tr>
+
+</table>
+</td></tr></table>
 </body></html>"""
 
 
@@ -471,8 +556,10 @@ def login_required(f):
 
 def save_file(file, prefix=''):
     if file and file.filename:
-        ext = os.path.splitext(file.filename)[1].lower()
-        filename = f"{prefix}{secrets.token_hex(8)}{ext}"
+        ext = os.path.splitext(file.filename)[1].lower().lstrip('.')
+        if ext not in ALLOWED_UPLOAD_EXTENSIONS:
+            return None
+        filename = f"{prefix}{secrets.token_hex(8)}.{ext}"
         file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
         return filename
     return None
@@ -786,24 +873,33 @@ def admin_forgot_password():
 
             reset_url = request.host_url.rstrip('/') + url_for('admin_reset_password', token=token)
             settings = get_settings()
-            body = f"""
-                <h2 style="color: #1c1c1b; margin: 0 0 20px 0;">Obnovení hesla</h2>
-                <p>Dobrý den, <strong>{admin['username']}</strong>,</p>
-                <p>obdrželi jsme žádost o obnovení hesla k vašemu účtu v administraci Cykloexpedice.</p>
-                <p>Klikněte na tlačítko níže pro nastavení nového hesla:</p>
-                <p style="text-align: center; margin: 30px 0;">
-                    <a href="{reset_url}"
-                       style="background: #fbb01f; color: #1c1c1b; padding: 14px 36px; border-radius: 50px;
-                              text-decoration: none; font-weight: 700; font-size: 14px; display: inline-block;
-                              letter-spacing: 1px;">
-                        NASTAVIT NOV&Eacute; HESLO
-                    </a>
-                </p>
-                <p style="font-size: 13px; color: #999;">Tento odkaz je platný 1 hodinu. Pokud jste o obnovení hesla nežádali, tento e-mail ignorujte.</p>
-                <p style="font-size: 12px; color: #ccc; word-break: break-all; margin-top: 20px;">
-                    Pokud tlačítko nefunguje, zkopírujte tento odkaz do prohlížeče:<br>{reset_url}
-                </p>
-            """
+            body = (
+                '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
+                '<tr><td align="center" style="padding-bottom:24px;">'
+                '<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>'
+                '<td style="background-color:#fbb01f;padding:8px 24px;font-family:Arial,sans-serif;font-size:13px;font-weight:700;color:#1c1c1b;text-transform:uppercase;letter-spacing:2px;">OBNOVENÍ HESLA</td>'
+                '</tr></table></td></tr>'
+                '<tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:26px;color:#374151;">'
+                f'<p style="margin:0 0 16px;">Dobrý den, <strong>{admin["username"]}</strong>,</p>'
+                '<p style="margin:0 0 16px;">obdrželi jsme žádost o obnovení hesla k vašemu účtu v administraci Cykloexpedice.</p>'
+                '<p style="margin:0 0 24px;">Klikněte na tlačítko níže pro nastavení nového hesla:</p>'
+                '</td></tr>'
+                '<tr><td align="center" style="padding:0 0 28px;">'
+                '<!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" href="' + reset_url + '" '
+                'style="height:48px;v-text-anchor:middle;width:280px;" arcsize="50%" fillcolor="#fbb01f">'
+                '<center style="color:#1c1c1b;font-family:Arial,sans-serif;font-size:14px;font-weight:bold;letter-spacing:1px;">NASTAVIT NOV&Eacute; HESLO</center>'
+                '</v:roundrect><![endif]-->'
+                '<!--[if !mso]><!-->'
+                f'<a href="{reset_url}" style="background-color:#fbb01f;color:#1c1c1b;padding:14px 36px;'
+                'text-decoration:none;font-weight:700;font-size:14px;font-family:Arial,sans-serif;display:inline-block;letter-spacing:1px;">'
+                'NASTAVIT NOV&Eacute; HESLO</a>'
+                '<!--<![endif]-->'
+                '</td></tr>'
+                '<tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:22px;color:#999999;">'
+                '<p style="margin:0 0 16px;">Tento odkaz je platný 1 hodinu. Pokud jste o obnovení hesla nežádali, tento e-mail ignorujte.</p>'
+                f'<p style="margin:0;font-size:12px;color:#cccccc;word-break:break-all;">Pokud tlačítko nefunguje, zkopírujte tento odkaz do prohlížeče:<br>{reset_url}</p>'
+                '</td></tr></table>'
+            )
             html = render_email_layout(body, settings)
             send_email(admin['email'], 'Obnovení hesla – Cykloexpedice Admin', html)
 
