@@ -5,11 +5,11 @@ __pycache__/
 .env
 venv/
 .venv/
-uploads/
+static/uploads/
 *.log
 .DS_Store
 instance/
-start.sh
+.pytest_cache/
 static/hero-video-original.mp4
 Video_Revision_and_Extension_Request.mp4
 IMG_4576.JPG
