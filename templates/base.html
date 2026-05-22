@@ -60,7 +60,7 @@
         .section-divider { width: 60px; height: 4px; background: #fbb01f; border-radius: 2px; }
     </style>
 </head>
-<body class="bg-cream-50 min-h-screen flex flex-col font-body">
+<body class="bg-cream-50 min-h-screen flex flex-col font-body {% if maintenance_active %}overflow-hidden h-screen{% endif %}">
     {% if maintenance_active %}
     <!-- Maintenance overlay -->
     <style>
