@@ -203,6 +203,8 @@ def init_db():
         'photos_link': 'https://photos.app.goo.gl/xvrkFtWUiQu31a3T9',
         'photos_text': 'Pokud někdo máte ještě fotky, které chcete sdílet s ostatními, nahrajte je prosím do galerie po kliku na tlačítko.',
         'fotky_enabled': '1',
+        'maintenance_enabled': '1',
+        'maintenance_until': '2026-06-01T00:00:01',
         'payment_amount': '3500',
         'bank_account': '2703473997/2010',
         'bank_iban': 'CZ1620100000002703473997',
@@ -578,7 +580,17 @@ def inject_globals():
     except Exception:
         etapy = []
         settings = {}
-    return dict(etapy_nav=etapy, settings=settings, now=datetime.now())
+    maintenance_active = False
+    if settings.get('maintenance_enabled') == '1':
+        until = settings.get('maintenance_until', '')
+        try:
+            deadline = datetime.fromisoformat(until)
+            if datetime.now() < deadline:
+                maintenance_active = True
+        except (ValueError, TypeError):
+            pass
+    return dict(etapy_nav=etapy, settings=settings, now=datetime.now(),
+                maintenance_active=maintenance_active)
 
 
 # ── Error handlers ────────────────────────────────────────────────
@@ -1492,6 +1504,12 @@ def admin_settings():
         # Checkbox toggle for fotky
         fotky_val = '1' if request.form.get('fotky_enabled') else '0'
         db.execute('INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)', ('fotky_enabled', fotky_val))
+        # Checkbox toggle for maintenance
+        maint_val = '1' if request.form.get('maintenance_enabled') else '0'
+        db.execute('INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)', ('maintenance_enabled', maint_val))
+        maint_until = request.form.get('maintenance_until', '').strip()
+        if maint_until:
+            db.execute('INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)', ('maintenance_until', maint_until))
         db.commit()
         flash('Nastavení uloženo.', 'success')
         return redirect(url_for('admin_settings'))

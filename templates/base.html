@@ -61,6 +61,110 @@
     </style>
 </head>
 <body class="bg-cream-50 min-h-screen flex flex-col font-body">
+    {% if maintenance_active %}
+    <!-- Maintenance overlay -->
+    <style>
+        @keyframes pulse-glow { 0%,100% { opacity: .4; } 50% { opacity: .7; } }
+        @keyframes fade-up { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+        .maint-fade { animation: fade-up .8s ease-out both; }
+        .maint-fade-d1 { animation-delay: .15s; }
+        .maint-fade-d2 { animation-delay: .3s; }
+        .maint-fade-d3 { animation-delay: .5s; }
+        .maint-fade-d4 { animation-delay: .7s; }
+        .maint-glow { animation: pulse-glow 4s ease-in-out infinite; }
+    </style>
+    <div id="maintenance-overlay" class="fixed inset-0 z-[9999] bg-dark-900 flex items-center justify-center overflow-hidden" style="cursor:default;">
+        <!-- Radial glow behind logo -->
+        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] md:w-[800px] md:h-[800px] rounded-full maint-glow"
+             style="background: radial-gradient(circle, rgba(251,176,31,0.12) 0%, transparent 70%);"></div>
+        <!-- Subtle pattern -->
+        <div class="absolute inset-0 opacity-[0.03]"
+             style="background-image: repeating-linear-gradient(45deg, transparent, transparent 40px, rgba(255,255,255,.05) 40px, rgba(255,255,255,.05) 41px);"></div>
+
+        <div class="relative text-center px-6 max-w-3xl mx-auto select-none">
+            <!-- Logo -->
+            <div class="maint-fade mb-6">
+                <img src="{{ url_for('static', filename='logo.png') }}" alt="Cykloexpedice"
+                     class="h-36 md:h-48 lg:h-56 mx-auto drop-shadow-[0_0_40px_rgba(251,176,31,0.25)]">
+            </div>
+
+            <!-- Heading -->
+            <div class="maint-fade maint-fade-d1 mb-4">
+                <p class="text-olive-500 font-semibold text-xs md:text-sm uppercase tracking-[0.25em] mb-5">Pracujeme na vylepšení</p>
+                <h1 class="font-display text-4xl md:text-6xl lg:text-7xl text-white tracking-wide leading-tight">
+                    PŘIPRAVUJEME<br>
+                    <span class="text-gold-500">NOVÝ WEB</span>
+                </h1>
+            </div>
+
+            <!-- Divider -->
+            <div class="maint-fade maint-fade-d1 flex items-center justify-center gap-4 my-8">
+                <div class="h-px w-16 bg-gradient-to-r from-transparent to-gold-500/50"></div>
+                <i class="bi bi-bicycle text-gold-500 text-xl"></i>
+                <div class="h-px w-16 bg-gradient-to-l from-transparent to-gold-500/50"></div>
+            </div>
+
+            <!-- Subtitle -->
+            <p class="maint-fade maint-fade-d2 text-gray-400 text-base md:text-lg mb-12 leading-relaxed max-w-lg mx-auto">
+                Brzy se vrátíme s novým obsahem.<br class="hidden md:inline">
+                Děkujeme za trpělivost!
+            </p>
+
+            <!-- Countdown -->
+            <div class="maint-fade maint-fade-d3 mb-12">
+                <p class="text-gray-500 text-xs uppercase tracking-[0.2em] mb-4">Spuštění webu za</p>
+                <div id="countdown" class="flex flex-wrap justify-center gap-3 md:gap-5">
+                    <div class="bg-gradient-to-b from-white/[0.07] to-white/[0.02] backdrop-blur rounded-2xl px-5 md:px-7 py-4 md:py-5 min-w-[80px] md:min-w-[100px] border border-white/10 shadow-lg shadow-black/20">
+                        <div id="cd-days" class="font-display text-3xl md:text-5xl text-gold-500 tabular-nums">--</div>
+                        <div class="text-[10px] md:text-xs uppercase tracking-wider text-gray-500 mt-1.5">dní</div>
+                    </div>
+                    <div class="text-gold-500/30 font-display text-3xl md:text-5xl self-center hidden md:block">:</div>
+                    <div class="bg-gradient-to-b from-white/[0.07] to-white/[0.02] backdrop-blur rounded-2xl px-5 md:px-7 py-4 md:py-5 min-w-[80px] md:min-w-[100px] border border-white/10 shadow-lg shadow-black/20">
+                        <div id="cd-hours" class="font-display text-3xl md:text-5xl text-gold-500 tabular-nums">--</div>
+                        <div class="text-[10px] md:text-xs uppercase tracking-wider text-gray-500 mt-1.5">hodin</div>
+                    </div>
+                    <div class="text-gold-500/30 font-display text-3xl md:text-5xl self-center hidden md:block">:</div>
+                    <div class="bg-gradient-to-b from-white/[0.07] to-white/[0.02] backdrop-blur rounded-2xl px-5 md:px-7 py-4 md:py-5 min-w-[80px] md:min-w-[100px] border border-white/10 shadow-lg shadow-black/20">
+                        <div id="cd-mins" class="font-display text-3xl md:text-5xl text-gold-500 tabular-nums">--</div>
+                        <div class="text-[10px] md:text-xs uppercase tracking-wider text-gray-500 mt-1.5">minut</div>
+                    </div>
+                    <div class="text-gold-500/30 font-display text-3xl md:text-5xl self-center hidden md:block">:</div>
+                    <div class="bg-gradient-to-b from-white/[0.07] to-white/[0.02] backdrop-blur rounded-2xl px-5 md:px-7 py-4 md:py-5 min-w-[80px] md:min-w-[100px] border border-white/10 shadow-lg shadow-black/20">
+                        <div id="cd-secs" class="font-display text-3xl md:text-5xl text-gold-500 tabular-nums">--</div>
+                        <div class="text-[10px] md:text-xs uppercase tracking-wider text-gray-500 mt-1.5">sekund</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Contact -->
+            <div class="maint-fade maint-fade-d4">
+                <div class="inline-flex items-center gap-2 bg-white/5 rounded-full px-5 py-2.5 border border-white/10">
+                    <i class="bi bi-envelope text-gold-500"></i>
+                    <span class="text-gray-400 text-sm">{{ settings.contact_email }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+    (function(){
+        var raw = "{{ settings.get('maintenance_until', '2026-06-01T00:00:01') }}";
+        var deadline = new Date(raw.indexOf('+') === -1 && raw.indexOf('Z') === -1 ? raw + '+02:00' : raw).getTime();
+        function pad(n){ return n < 10 ? '0' + n : n; }
+        function tick(){
+            var now = Date.now(), diff = deadline - now;
+            if(diff <= 0){ location.reload(); return; }
+            var d = Math.floor(diff/86400000), h = Math.floor((diff%86400000)/3600000),
+                m = Math.floor((diff%3600000)/60000), s = Math.floor((diff%60000)/1000);
+            document.getElementById('cd-days').textContent = d;
+            document.getElementById('cd-hours').textContent = pad(h);
+            document.getElementById('cd-mins').textContent = pad(m);
+            document.getElementById('cd-secs').textContent = pad(s);
+        }
+        tick();
+        setInterval(tick, 1000);
+    })();
+    </script>
+    {% endif %}
     <!-- Navbar -->
     <nav class="bg-dark-900 text-white sticky top-0 z-50" x-data="{ open: false }">
         <div class="max-w-6xl mx-auto px-4">
