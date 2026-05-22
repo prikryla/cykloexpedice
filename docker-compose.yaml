@@ -1,0 +1,13 @@
+services:
+  web:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5000:5000"
+    env_file: .env
+    networks:
+      - infra_default
+
+networks:
+  infra_default:
+    external: true

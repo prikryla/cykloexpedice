@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
     <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
     <script src="https://unpkg.com/alpinejs@3/dist/cdn.min.js" defer></script>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
     <style>[x-cloak] { display: none !important; }</style>
     <script src="https://cdn.jsdelivr.net/npm/tinymce@6/tinymce.min.js"></script>
     {% block head_extra %}{% endblock %}
@@ -20,8 +21,9 @@
                 <button @click="sidebarOpen = !sidebarOpen" class="lg:hidden text-xl">
                     <i class="bi bi-list"></i>
                 </button>
-                <a href="{{ url_for('admin_dashboard') }}" class="font-bold text-amber-400">
-                    <i class="bi bi-gear"></i> Admin
+                <a href="{{ url_for('admin_dashboard') }}" class="flex items-center gap-2 font-bold text-amber-400">
+                    <img src="{{ url_for('static', filename='logo.png') }}" alt="" class="h-7">
+                    Admin
                 </a>
             </div>
             <div class="flex items-center gap-4">

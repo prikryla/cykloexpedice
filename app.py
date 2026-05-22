@@ -378,6 +378,14 @@ def send_email(to_email, subject, html_body, sender_username=None):
 
 # ── Email template helpers ────────────────────────────────────
 
+_logo_path = os.path.join(os.path.dirname(__file__), 'static', 'logo-email.png')
+if os.path.exists(_logo_path):
+    with open(_logo_path, 'rb') as _f:
+        _LOGO_BASE64 = base64.b64encode(_f.read()).decode()
+else:
+    _LOGO_BASE64 = ''
+
+
 def render_email_layout(body_html, settings):
     """Wrap email body in a branded table-based layout for email client compatibility."""
     event_name = settings.get('event_name', 'Cykloexpedice')
@@ -400,18 +408,11 @@ def render_email_layout(body_html, settings):
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;">
 
 <!-- Header -->
-<tr><td align="center" bgcolor="#1c1c1b" style="background-color:#1c1c1b;padding:44px 40px 36px;">
+<tr><td align="center" bgcolor="#1c1c1b" style="background-color:#1c1c1b;padding:36px 40px 28px;">
   <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center">
-    <h1 style="font-family:'Oswald',Arial Black,Impact,sans-serif;color:#fbb01f;font-size:28px;margin:0;letter-spacing:4px;font-weight:700;text-transform:uppercase;mso-line-height-rule:exactly;line-height:34px;">
-      {event_name}
-    </h1>
+    <img src="data:image/png;base64,{_LOGO_BASE64}" alt="{event_name}" width="220" style="display:block;max-width:220px;width:100%;height:auto;">
   </td></tr>
-  <tr><td align="center" style="padding-top:14px;">
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-      <td style="width:48px;height:3px;background-color:#fbb01f;font-size:1px;line-height:1px;">&nbsp;</td>
-    </tr></table>
-  </td></tr>
-  <tr><td align="center" style="padding-top:10px;">
+  <tr><td align="center" style="padding-top:12px;">
     <p style="font-family:'Montserrat',Arial,Helvetica,sans-serif;color:#6b7280;font-size:13px;margin:0;letter-spacing:2px;text-transform:uppercase;">{event_year}</p>
   </td></tr></table>
 </td></tr>

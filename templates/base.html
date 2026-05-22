@@ -26,6 +26,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
     <script src="https://unpkg.com/alpinejs@3/dist/cdn.min.js" defer></script>
     <style>
@@ -132,38 +134,72 @@
     </main>
 
     <!-- Footer -->
-    <footer class="bg-dark-900 text-white pt-12 pb-8 mt-auto">
-        <div class="max-w-6xl mx-auto px-4">
-            <div class="grid md:grid-cols-3 gap-8 pb-8 border-b border-white/10">
+    <footer class="bg-dark-900 text-white mt-auto">
+        <!-- Gold accent top line -->
+        <div class="h-1 bg-gradient-to-r from-gold-600 via-gold-500 to-olive-500"></div>
+
+        <div class="max-w-6xl mx-auto px-4 pt-14 pb-10">
+            <!-- Logo + tagline centered -->
+            <div class="text-center mb-12">
+                <img src="{{ url_for('static', filename='logo.png') }}" alt="Cykloexpedice" class="h-20 mx-auto mb-4">
+                <p class="text-gray-400 text-sm max-w-md mx-auto leading-relaxed">
+                    Organizujeme cykloexpedice po krásách české krajiny.
+                    Přidejte se k nám na nezapomenutelné dobrodružství na kole!
+                </p>
+            </div>
+
+            <!-- Links + Contact columns -->
+            <div class="grid sm:grid-cols-2 md:grid-cols-3 gap-10 pb-10 border-b border-white/10">
                 <div>
-                    <h3 class="font-display text-3xl text-gold-500 mb-3">CYKLOEXPEDICE</h3>
-                    <p class="text-gray-400 text-sm leading-relaxed">
-                        Organizujeme cykloexpedice po krásách české krajiny.
-                        Přidejte se k nám na nezapomenutelné dobrodružství na kole!
-                    </p>
+                    <h4 class="font-display text-sm uppercase tracking-widest mb-5 text-gold-500">Navigace</h4>
+                    <ul class="space-y-3">
+                        <li><a href="{{ url_for('propozice') }}" class="text-gray-400 hover:text-white text-sm transition flex items-center gap-2"><i class="bi bi-chevron-right text-gold-500/50 text-xs"></i>Propozice</a></li>
+                        <li><a href="{{ url_for('aktuality') }}" class="text-gray-400 hover:text-white text-sm transition flex items-center gap-2"><i class="bi bi-chevron-right text-gold-500/50 text-xs"></i>Aktuality</a></li>
+                        <li><a href="{{ url_for('ubytovani') }}" class="text-gray-400 hover:text-white text-sm transition flex items-center gap-2"><i class="bi bi-chevron-right text-gold-500/50 text-xs"></i>Ubytování</a></li>
+                        <li><a href="{{ url_for('kontakt') }}" class="text-gray-400 hover:text-white text-sm transition flex items-center gap-2"><i class="bi bi-chevron-right text-gold-500/50 text-xs"></i>Kontakt</a></li>
+                    </ul>
                 </div>
                 <div>
-                    <h4 class="font-semibold text-sm uppercase tracking-wider mb-4 text-gold-500">Navigace</h4>
-                    <div class="space-y-2">
-                        <a href="{{ url_for('propozice') }}" class="block text-gray-400 hover:text-white text-sm transition">Propozice</a>
-                        <a href="{{ url_for('aktuality') }}" class="block text-gray-400 hover:text-white text-sm transition">Aktuality</a>
-                        <a href="{{ url_for('ubytovani') }}" class="block text-gray-400 hover:text-white text-sm transition">Ubytování</a>
-                        <a href="{{ url_for('registrace') }}" class="block text-gray-400 hover:text-white text-sm transition">Registrace</a>
-                    </div>
+                    <h4 class="font-display text-sm uppercase tracking-widest mb-5 text-gold-500">Registrace</h4>
+                    <ul class="space-y-3">
+                        <li><a href="{{ url_for('registrace') }}" class="text-gray-400 hover:text-white text-sm transition flex items-center gap-2"><i class="bi bi-chevron-right text-gold-500/50 text-xs"></i>Přihlášení na expedici</a></li>
+                        {% if settings.fotky_enabled == '1' %}
+                        <li><a href="{{ url_for('fotky') }}" class="text-gray-400 hover:text-white text-sm transition flex items-center gap-2"><i class="bi bi-chevron-right text-gold-500/50 text-xs"></i>Fotogalerie</a></li>
+                        {% endif %}
+                    </ul>
                 </div>
                 <div>
-                    <h4 class="font-semibold text-sm uppercase tracking-wider mb-4 text-gold-500">Kontakt</h4>
-                    <div class="space-y-2 text-sm text-gray-400">
-                        <p>{{ settings.contact_name_1 }}</p>
-                        <p>{{ settings.contact_name_2 }}</p>
-                        <a href="mailto:{{ settings.contact_email }}" class="text-gold-500 hover:text-gold-400 transition">
-                            {{ settings.contact_email }}
-                        </a>
+                    <h4 class="font-display text-sm uppercase tracking-widest mb-5 text-gold-500">Kontakt</h4>
+                    <div class="space-y-4 text-sm">
+                        {% if settings.contact_name_1 or settings.contact_name_2 %}
+                        <div class="flex items-start gap-3">
+                            <i class="bi bi-people text-gold-500 mt-0.5"></i>
+                            <div class="text-gray-400">
+                                {% if settings.contact_name_1 %}<p>{{ settings.contact_name_1 }}</p>{% endif %}
+                                {% if settings.contact_name_2 %}<p>{{ settings.contact_name_2 }}</p>{% endif %}
+                            </div>
+                        </div>
+                        {% endif %}
+                        {% if settings.contact_email %}
+                        <div class="flex items-center gap-3">
+                            <i class="bi bi-envelope text-gold-500"></i>
+                            <a href="mailto:{{ settings.contact_email }}" class="text-gold-500 hover:text-gold-400 transition">
+                                {{ settings.contact_email }}
+                            </a>
+                        </div>
+                        {% endif %}
+                        <div class="flex items-center gap-3">
+                            <i class="bi bi-arrow-right text-gold-500"></i>
+                            <a href="{{ url_for('kontakt') }}" class="text-gray-400 hover:text-white transition">Stránka kontaktu</a>
+                        </div>
                     </div>
                 </div>
             </div>
-            <div class="pt-6 text-center text-gray-500 text-xs">
-                &copy; 2014 – {{ now.year }} Cykloexpedice. Všechna práva vyhrazena.
+
+            <!-- Bottom bar -->
+            <div class="pt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <p class="text-gray-500 text-xs">&copy; 2014&ndash;{{ now.year }} Cykloexpedice. Všechna práva vyhrazena.</p>
+                <a href="{{ url_for('registrace') }}" class="text-xs font-semibold text-gold-500 hover:text-gold-400 transition uppercase tracking-wider">Přihlásit se na expedici &rarr;</a>
             </div>
         </div>
     </footer>
