@@ -203,7 +203,7 @@
             </div>
 
             <!-- Mobile menu -->
-            <div x-show="open" x-cloak x-transition class="md:hidden pb-4 space-y-1">
+            <div x-show="open" x-cloak x-transition class="md:hidden pb-4 space-y-1" @click="open = false">
                 <a href="{{ url_for('aktuality') }}" class="block px-3 py-2.5 rounded-lg hover:bg-white/10 text-gold-500 font-semibold">Aktuality</a>
                 {% if settings.fotky_enabled == '1' %}
                 <a href="{{ url_for('fotky') }}" class="block px-3 py-2.5 rounded-lg hover:bg-white/10 text-gold-500 font-semibold">Fotky</a>
@@ -224,8 +224,10 @@
     {% if messages %}
     <div class="max-w-6xl mx-auto px-4 mt-4">
         {% for category, message in messages %}
-        <div class="p-4 rounded-xl mb-2 {% if category == 'error' %}bg-red-50 text-red-700 border border-red-200{% else %}bg-olive-500/10 text-olive-600 border border-olive-500/20{% endif %}">
-            {{ message }}
+        <div x-data="{ show: true }" x-show="show" x-init="setTimeout(() => show = false, 5000)" x-transition.duration.500ms
+             class="p-4 rounded-xl mb-2 flex items-center justify-between {% if category == 'error' %}bg-red-50 text-red-700 border border-red-200{% else %}bg-olive-500/10 text-olive-600 border border-olive-500/20{% endif %}">
+            <span>{{ message }}</span>
+            <button @click="show = false" class="ml-4 opacity-50 hover:opacity-100 transition">&times;</button>
         </div>
         {% endfor %}
     </div>
@@ -236,6 +238,15 @@
     <main class="flex-1">
         {% block content %}{% endblock %}
     </main>
+
+    <!-- Back to top -->
+    <div x-data="{ visible: false }" @scroll.window="visible = window.scrollY > 400">
+        <div x-show="visible" x-cloak x-transition
+             @click="window.scrollTo({ top: 0, behavior: 'smooth' })"
+             class="fixed bottom-6 right-6 z-40 w-12 h-12 bg-gold-500 rounded-full flex items-center justify-center cursor-pointer shadow-lg hover:bg-gold-600 transition">
+            <i class="bi bi-chevron-up text-dark-900 text-xl"></i>
+        </div>
+    </div>
 
     <!-- Footer -->
     <footer class="bg-dark-900 text-white mt-auto">

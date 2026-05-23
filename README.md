@@ -17,7 +17,7 @@ Web application for **Cykloexpedice** — an annual multi-day cycling expedition
 | Backend     | Python · Flask                      |
 | Database    | PostgreSQL (psycopg2)               |
 | Frontend    | Tailwind CSS (CDN) · Alpine.js (CDN)|
-| Deployment  | Railway · Gunicorn                  |
+| Deployment  | Hetzner · Docker · Gunicorn         |
 
 ## Project Structure
 
@@ -28,7 +28,8 @@ static/          # CSS, uploads, media
 test_app.py      # Test suite
 conftest.py      # Test fixtures
 start.sh         # Local dev startup script
-Procfile         # Railway/Heroku process definition
+Dockerfile       # Container image definition
+docker-compose.yaml # Docker Compose service config
 ```
 
 ## Environment Variables

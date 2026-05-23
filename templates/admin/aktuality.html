@@ -39,6 +39,7 @@
                             <i class="bi bi-pencil"></i> Upravit
                         </a>
                         <form method="POST" action="{{ url_for('admin_aktualita_delete', id=a.id) }}" class="inline">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                             <button type="button"
                                     class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-700 text-sm font-medium rounded-lg hover:bg-red-100 transition"
                                     onclick="openDeleteModal(this.closest('form'), &quot;Opravdu chcete smazat aktualitu {{ a.title|e }}?&quot;)">

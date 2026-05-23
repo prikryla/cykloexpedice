@@ -22,6 +22,7 @@ document.addEventListener('DOMContentLoaded', function() {
 <h1 class="text-2xl font-bold mb-6">Propozice</h1>
 
 <form method="POST" class="space-y-6">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
     <div class="bg-white rounded-xl shadow p-6">
         <p class="text-sm text-gray-500 mb-4">Obsah propozic. Tento obsah se zobrazí na stránce Propozice.</p>
         <textarea name="content" id="content-editor">{{ content }}</textarea>

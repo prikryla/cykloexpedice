@@ -3,6 +3,7 @@ import json
 from unittest.mock import patch, MagicMock
 import bcrypt
 import pytest
+from flask.testing import FlaskClient
 
 
 # ── Helper function tests ────────────────────────────────────────
@@ -158,14 +159,13 @@ class TestRegistration:
         assert r.status_code == 200
         assert 'povinné' in r.data.decode()
 
-    def test_submit_without_email_no_email_sent(self, client):
-        with patch('app.send_email') as mock_email:
-            r = client.post('/registrace', data={
-                'name': 'Jan Novák',
-                'email': '',
-            }, follow_redirects=True)
-            assert r.status_code == 200
-            mock_email.assert_not_called()
+    def test_submit_without_email_fails(self, client):
+        r = client.post('/registrace', data={
+            'name': 'Jan Novák',
+            'email': '',
+        })
+        assert r.status_code == 200
+        assert 'povinný' in r.data.decode().lower()
 
 
 # ── Admin auth tests ─────────────────────────────────────────────
@@ -708,10 +708,654 @@ class TestPasswordManagement:
             'new_password': '12345',
             'new_password2': '12345',
         })
-        assert '6 znaků' in r.data.decode().lower()
+        assert '8 znaků' in r.data.decode().lower()
+
+    def test_set_password_page_requires_session(self, client):
+        r = client.get('/admin/set-password')
+        assert r.status_code == 302
+        assert '/admin/login' in r.headers['Location']
+
+    def test_set_password_too_short(self, app, client):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute('UPDATE admins SET password_hash = NULL WHERE username = ?', ('adam',))
+            db.commit()
+
+        client.post('/admin/login', data={'username': 'adam', 'password': ''})
+        r = client.post('/admin/set-password', data={
+            'password': 'short',
+            'password2': 'short',
+        })
+        assert '8 znaků' in r.data.decode().lower()
+
+    def test_set_password_mismatch(self, app, client):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute('UPDATE admins SET password_hash = NULL WHERE username = ?', ('adam',))
+            db.commit()
+
+        client.post('/admin/login', data={'username': 'adam', 'password': ''})
+        r = client.post('/admin/set-password', data={
+            'password': 'password123',
+            'password2': 'different123',
+        })
+        assert 'neshodují' in r.data.decode().lower()
+
+    def test_set_password_success(self, app, client):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute('UPDATE admins SET password_hash = NULL WHERE username = ?', ('adam',))
+            db.commit()
+
+        client.post('/admin/login', data={'username': 'adam', 'password': ''})
+        r = client.post('/admin/set-password', data={
+            'password': 'newpassword1',
+            'password2': 'newpassword1',
+        }, follow_redirects=True)
+        assert r.status_code == 200
 
     def test_forgot_password(self, client):
         r = client.post('/admin/forgot-password', data={
             'username': 'adam',
         }, follow_redirects=True)
         assert r.status_code == 200
+
+    def test_forgot_password_sends_email(self, app, client):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute('UPDATE admins SET email = ? WHERE username = ?', ('adam@test.cz', 'adam'))
+            pw_hash = bcrypt.hashpw(b'testpass', bcrypt.gensalt()).decode()
+            db.execute('UPDATE admins SET password_hash = ? WHERE username = ?', (pw_hash, 'adam'))
+            db.commit()
+
+        with patch('app.send_email') as mock_email:
+            r = client.post('/admin/forgot-password', data={
+                'username': 'adam',
+            }, follow_redirects=True)
+            assert r.status_code == 200
+            mock_email.assert_called_once()
+
+    def test_forgot_password_nonexistent_user(self, client):
+        r = client.post('/admin/forgot-password', data={
+            'username': 'nobody',
+        }, follow_redirects=True)
+        assert r.status_code == 200
+        assert 'odeslali' in r.data.decode().lower()
+
+    def test_reset_password_invalid_token(self, client):
+        r = client.get('/admin/reset-password/invalid-token', follow_redirects=True)
+        assert r.status_code == 200
+        assert 'neplatný' in r.data.decode().lower()
+
+    def test_reset_password_flow(self, app, client):
+        import secrets
+        from datetime import datetime
+        token = secrets.token_urlsafe(48)
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            admin = db.execute('SELECT id FROM admins WHERE username = ?', ('adam',)).fetchone()
+            expires = datetime.now().timestamp() + 3600
+            db.execute(
+                'INSERT INTO password_reset_tokens (admin_id, token, expires_at) VALUES (?, ?, ?)',
+                (admin['id'], token, datetime.fromtimestamp(expires))
+            )
+            db.commit()
+
+        r = client.get(f'/admin/reset-password/{token}')
+        assert r.status_code == 200
+
+        r = client.post(f'/admin/reset-password/{token}', data={
+            'password': 'newpassword1',
+            'password2': 'newpassword1',
+        }, follow_redirects=True)
+        assert r.status_code == 200
+        assert 'změněno' in r.data.decode().lower()
+
+    def test_reset_password_too_short(self, app, client):
+        import secrets
+        from datetime import datetime
+        token = secrets.token_urlsafe(48)
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            admin = db.execute('SELECT id FROM admins WHERE username = ?', ('adam',)).fetchone()
+            expires = datetime.now().timestamp() + 3600
+            db.execute(
+                'INSERT INTO password_reset_tokens (admin_id, token, expires_at) VALUES (?, ?, ?)',
+                (admin['id'], token, datetime.fromtimestamp(expires))
+            )
+            db.commit()
+
+        r = client.post(f'/admin/reset-password/{token}', data={
+            'password': 'short',
+            'password2': 'short',
+        })
+        assert '8 znaků' in r.data.decode().lower()
+
+    def test_reset_password_expired_token(self, app, client):
+        import secrets
+        from datetime import datetime
+        token = secrets.token_urlsafe(48)
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            admin = db.execute('SELECT id FROM admins WHERE username = ?', ('adam',)).fetchone()
+            expired = datetime.now().timestamp() - 3600
+            db.execute(
+                'INSERT INTO password_reset_tokens (admin_id, token, expires_at) VALUES (?, ?, ?)',
+                (admin['id'], token, datetime.fromtimestamp(expired))
+            )
+            db.commit()
+
+        r = client.get(f'/admin/reset-password/{token}', follow_redirects=True)
+        assert 'neplatný' in r.data.decode().lower() or 'vypršel' in r.data.decode().lower()
+
+
+# ── CSRF protection tests ───────────────────────────────────────────
+
+
+class TestCSRFProtection:
+    def test_post_without_csrf_returns_403(self, app):
+        app.test_client_class = FlaskClient
+        raw_client = app.test_client()
+        r = raw_client.post('/registrace', data={
+            'name': 'Test',
+            'email': 'test@test.cz',
+        })
+        assert r.status_code == 403
+        app.test_client_class = None
+
+    def test_post_with_wrong_csrf_returns_403(self, app):
+        app.test_client_class = FlaskClient
+        raw_client = app.test_client()
+        with raw_client.session_transaction() as sess:
+            sess['_csrf_token'] = 'correct-token'
+        r = raw_client.post('/registrace', data={
+            'name': 'Test',
+            'email': 'test@test.cz',
+            '_csrf_token': 'wrong-token',
+        })
+        assert r.status_code == 403
+        app.test_client_class = None
+
+    def test_post_with_valid_csrf_succeeds(self, client):
+        with patch('app.send_email'):
+            r = client.post('/registrace', data={
+                'name': 'Test User',
+                'email': 'test@test.cz',
+            }, follow_redirects=True)
+            assert r.status_code == 200
+
+    def test_csrf_token_generated_on_form_page(self, app):
+        app.test_client_class = FlaskClient
+        raw_client = app.test_client()
+        r = raw_client.get('/registrace')
+        with raw_client.session_transaction() as sess:
+            assert '_csrf_token' in sess
+            assert len(sess['_csrf_token']) == 64
+        app.test_client_class = None
+
+
+# ── Maintenance mode tests ──────────────────────────────────────────
+
+
+class TestMaintenanceMode:
+    def test_maintenance_overlay_shown_when_enabled(self, app, client):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute("INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)",
+                       ('maintenance_enabled', '1'))
+            db.execute("INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)",
+                       ('maintenance_until', '2099-01-01T00:00:01'))
+            db.commit()
+
+        r = client.get('/')
+        html = r.data.decode()
+        assert 'maintenance-overlay' in html
+        assert 'PŘIPRAVUJEME' in html
+
+    def test_maintenance_overlay_hidden_when_disabled(self, app, client):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute("INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)",
+                       ('maintenance_enabled', '0'))
+            db.commit()
+
+        r = client.get('/')
+        assert 'maintenance-overlay' not in r.data.decode()
+
+    def test_maintenance_overlay_hidden_after_deadline(self, app, client):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute("INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)",
+                       ('maintenance_enabled', '1'))
+            db.execute("INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)",
+                       ('maintenance_until', '2020-01-01T00:00:01'))
+            db.commit()
+
+        r = client.get('/')
+        assert 'maintenance-overlay' not in r.data.decode()
+
+    def test_maintenance_does_not_affect_admin(self, app, admin_client):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute("INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)",
+                       ('maintenance_enabled', '1'))
+            db.execute("INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)",
+                       ('maintenance_until', '2099-01-01T00:00:01'))
+            db.commit()
+
+        r = admin_client.get('/admin')
+        assert 'maintenance-overlay' not in r.data.decode()
+
+    def test_maintenance_blocks_scrolling(self, app, client):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute("INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)",
+                       ('maintenance_enabled', '1'))
+            db.execute("INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)",
+                       ('maintenance_until', '2099-01-01T00:00:01'))
+            db.commit()
+
+        r = client.get('/')
+        assert 'overflow-hidden' in r.data.decode()
+
+    def test_maintenance_toggle_in_admin_settings(self, admin_client, app):
+        r = admin_client.post('/admin/nastaveni', data={
+            'event_name': 'Test', 'event_year': '2026', 'event_days': '3',
+            'event_km': '100', 'event_elevation': '500', 'event_dates': 'test',
+            'contact_name_1': 'A', 'contact_name_2': 'B', 'contact_email': 'a@b.cz',
+            'photos_link': '', 'photos_text': '', 'payment_amount': '3500',
+            'bank_account': '', 'bank_iban': '',
+            'maintenance_until': '2099-12-31T23:59:59',
+        }, follow_redirects=True)
+        assert r.status_code == 200
+
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            row = db.execute("SELECT value FROM site_settings WHERE key = 'maintenance_enabled'").fetchone()
+            assert row['value'] == '0'
+
+
+# ── Security headers tests ──────────────────────────────────────────
+
+
+class TestSecurityHeaders:
+    def test_x_content_type_options(self, client):
+        r = client.get('/')
+        assert r.headers.get('X-Content-Type-Options') == 'nosniff'
+
+    def test_x_frame_options(self, client):
+        r = client.get('/')
+        assert r.headers.get('X-Frame-Options') == 'DENY'
+
+    def test_session_cookie_httponly(self, app):
+        assert app.config['SESSION_COOKIE_HTTPONLY'] is True
+
+    def test_session_cookie_samesite(self, app):
+        assert app.config['SESSION_COOKIE_SAMESITE'] == 'Lax'
+
+
+# ── Context processor tests ─────────────────────────────────────────
+
+
+class TestContextProcessor:
+    def test_injects_settings(self, client):
+        r = client.get('/')
+        html = r.data.decode()
+        assert 'CYKLOEXPEDICE' in html
+
+    def test_injects_etapy_nav(self, app, client):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute("INSERT INTO etapy (number, title) VALUES (?, ?)", (1, 'Testovaci Etapa'))
+            db.commit()
+
+        r = client.get('/')
+        assert 'Testovaci Etapa' in r.data.decode()
+
+    def test_injects_current_year(self, client):
+        from datetime import datetime
+        r = client.get('/')
+        assert str(datetime.now().year) in r.data.decode()
+
+
+# ── Public route edge cases ──────────────────────────────────────────
+
+
+class TestPublicRouteEdgeCases:
+    def test_fotky_disabled_returns_404(self, app, client):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute("INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)",
+                       ('fotky_enabled', '0'))
+            db.commit()
+
+        r = client.get('/fotky')
+        assert r.status_code == 404
+
+    def test_etapa_detail(self, app, client):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO etapy (number, title, description) VALUES (?, ?, ?)",
+                (10, 'Detail Test', 'Test description'))
+            db.commit()
+
+        r = client.get('/etapa/10')
+        assert r.status_code == 200
+        assert 'Detail Test' in r.data.decode()
+
+    def test_etapa_nonexistent_returns_404(self, client):
+        r = client.get('/etapa/999')
+        assert r.status_code == 404
+
+    def test_etapa_prev_next_navigation(self, app, client):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute("INSERT INTO etapy (number, title) VALUES (?, ?)", (1, 'First'))
+            db.execute("INSERT INTO etapy (number, title) VALUES (?, ?)", (2, 'Second'))
+            db.execute("INSERT INTO etapy (number, title) VALUES (?, ?)", (3, 'Third'))
+            db.commit()
+
+        r = client.get('/etapa/2')
+        html = r.data.decode()
+        assert r.status_code == 200
+
+    def test_aktuality_only_shows_published(self, app, client):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute("INSERT INTO aktuality (title, content, published) VALUES (?, ?, ?)",
+                       ('Published News', 'content', 1))
+            db.execute("INSERT INTO aktuality (title, content, published) VALUES (?, ?, ?)",
+                       ('Draft News', 'content', 0))
+            db.commit()
+
+        r = client.get('/aktuality')
+        html = r.data.decode()
+        assert 'PUBLISHED NEWS' in html
+        assert 'DRAFT NEWS' not in html
+
+    def test_propozice_shows_content(self, app, client):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute("INSERT INTO propozice (content) VALUES (?)", ('<p>Test Content</p>',))
+            db.commit()
+
+        r = client.get('/propozice')
+        assert 'Test Content' in r.data.decode()
+
+
+# ── Admin profile & SMTP tests ──────────────────────────────────────
+
+
+class TestAdminProfile:
+    def test_save_profile_email(self, admin_client, app):
+        r = admin_client.post('/admin/profile', data={
+            'email': 'newemail@test.cz',
+            'smtp_host': 'smtp.test.cz',
+            'smtp_port': '587',
+            'smtp_user': 'user',
+            'smtp_password': 'pass',
+            'smtp_from': 'from@test.cz',
+        }, follow_redirects=True)
+        assert r.status_code == 200
+        assert 'uložen' in r.data.decode().lower()
+
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            admin = db.execute('SELECT email FROM admins WHERE username = ?', ('adam',)).fetchone()
+            assert admin['email'] == 'newemail@test.cz'
+            smtp = db.execute("SELECT value FROM site_settings WHERE key = 'smtp_host_adam'").fetchone()
+            assert smtp['value'] == 'smtp.test.cz'
+
+
+# ── Admin CRUD edge cases ───────────────────────────────────────────
+
+
+class TestAdminCRUDEdgeCases:
+    def test_edit_etapa_post(self, admin_client, app):
+        admin_client.post('/admin/etapy/new', data={
+            'number': '5', 'title': 'Original Title', 'date': '', 'distance': '',
+            'elevation_up': '', 'elevation_down': '', 'route': '',
+            'waypoints': '', 'description': '', 'map_link': '',
+            'youtube_links': '', 'color': '#ffc107',
+        })
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            row = db.execute('SELECT id FROM etapy WHERE number = 5').fetchone()
+            etapa_id = row['id']
+
+        r = admin_client.post(f'/admin/etapy/{etapa_id}/edit', data={
+            'number': '5', 'title': 'Updated Title', 'date': '2026-09-01',
+            'distance': '120', 'elevation_up': '600', 'elevation_down': '500',
+            'route': 'A - C', 'waypoints': 'town1', 'description': 'Updated',
+            'map_link': '', 'youtube_links': 'https://youtube.com/watch?v=123',
+            'color': '#ff0000',
+        }, follow_redirects=True)
+        assert r.status_code == 200
+        assert 'uložena' in r.data.decode().lower()
+
+        with app.app_context():
+            db = flask_app.get_db()
+            row = db.execute('SELECT title FROM etapy WHERE number = 5').fetchone()
+            assert row['title'] == 'Updated Title'
+
+    def test_edit_nonexistent_etapa_returns_404(self, admin_client):
+        r = admin_client.get('/admin/etapy/9999/edit')
+        assert r.status_code == 404
+
+    def test_edit_aktualita(self, admin_client, app):
+        admin_client.post('/admin/aktuality/new', data={
+            'title': 'Edit Me', 'content': '<p>original</p>', 'published': '1',
+        })
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            row = db.execute("SELECT id FROM aktuality WHERE title = 'Edit Me'").fetchone()
+            aid = row['id']
+
+        r = admin_client.get(f'/admin/aktuality/{aid}/edit')
+        assert r.status_code == 200
+
+        r = admin_client.post(f'/admin/aktuality/{aid}/edit', data={
+            'title': 'Edited Title', 'content': '<p>updated</p>', 'published': '1',
+        }, follow_redirects=True)
+        assert r.status_code == 200
+
+        with app.app_context():
+            db = flask_app.get_db()
+            row = db.execute(f'SELECT title FROM aktuality WHERE id = ?', (aid,)).fetchone()
+            assert row['title'] == 'Edited Title'
+
+    def test_edit_nonexistent_aktualita_returns_404(self, admin_client):
+        r = admin_client.get('/admin/aktuality/9999/edit')
+        assert r.status_code == 404
+
+    def test_edit_ubytovani(self, admin_client, app):
+        admin_client.post('/admin/ubytovani/new', data={
+            'etapa_number': '1', 'name': 'Edit Hotel', 'city': 'Brno',
+            'date': '', 'rooms_info': '', 'food_info': '', 'link': '', 'sort_order': '0',
+        })
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            row = db.execute("SELECT id FROM ubytovani WHERE name = 'Edit Hotel'").fetchone()
+            uid = row['id']
+
+        r = admin_client.get(f'/admin/ubytovani/{uid}/edit')
+        assert r.status_code == 200
+
+        r = admin_client.post(f'/admin/ubytovani/{uid}/edit', data={
+            'etapa_number': '1', 'name': 'Updated Hotel', 'city': 'Praha',
+            'date': '', 'rooms_info': '3x', 'food_info': 'oběd', 'link': '', 'sort_order': '1',
+        }, follow_redirects=True)
+        assert r.status_code == 200
+        assert 'uloženo' in r.data.decode().lower()
+
+    def test_edit_nonexistent_ubytovani_returns_404(self, admin_client):
+        r = admin_client.get('/admin/ubytovani/9999/edit')
+        assert r.status_code == 404
+
+    def test_delete_ubytovani(self, admin_client, app):
+        admin_client.post('/admin/ubytovani/new', data={
+            'etapa_number': '1', 'name': 'Delete Hotel', 'city': 'X',
+            'date': '', 'rooms_info': '', 'food_info': '', 'link': '', 'sort_order': '0',
+        })
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            row = db.execute("SELECT id FROM ubytovani WHERE name = 'Delete Hotel'").fetchone()
+            uid = row['id']
+
+        r = admin_client.post(f'/admin/ubytovani/{uid}/delete', follow_redirects=True)
+        assert r.status_code == 200
+        assert 'smazáno' in r.data.decode().lower()
+
+    def test_propozice_update_existing(self, admin_client, app):
+        admin_client.post('/admin/propozice', data={'content': '<p>First</p>'})
+        r = admin_client.post('/admin/propozice', data={'content': '<p>Second</p>'},
+                              follow_redirects=True)
+        assert r.status_code == 200
+
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            row = db.execute('SELECT content FROM propozice ORDER BY id DESC LIMIT 1').fetchone()
+            assert 'Second' in row['content']
+
+    def test_create_aktualita_unpublished(self, admin_client, app):
+        r = admin_client.post('/admin/aktuality/new', data={
+            'title': 'Draft', 'content': '<p>draft</p>',
+        }, follow_redirects=True)
+        assert r.status_code == 200
+
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            row = db.execute("SELECT published FROM aktuality WHERE title = 'Draft'").fetchone()
+            assert row['published'] == 0
+
+
+# ── Fio payments edge cases ─────────────────────────────────────────
+
+
+class TestCheckFioPaymentsEdgeCases:
+    def test_handles_empty_transaction_list(self, app):
+        import app as flask_app
+        fio_response = {
+            'accountStatement': {
+                'transactionList': None
+            }
+        }
+        with patch('app.requests.get') as mock_get:
+            mock_get.return_value = MagicMock(status_code=200, json=lambda: fio_response)
+            flask_app.check_fio_payments()
+
+    def test_handles_missing_vs_column(self, app):
+        import app as flask_app
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO registrace (name, email, status, variable_symbol, "
+                "payment_status, payment_amount) VALUES (?, ?, 'approved', ?, 'pending', ?)",
+                ('Test', 'x@y.cz', 50, 3500))
+            db.commit()
+
+        fio_response = {
+            'accountStatement': {
+                'transactionList': {
+                    'transaction': [{
+                        'column1': {'value': 3500},
+                    }]
+                }
+            }
+        }
+        with patch('app.requests.get') as mock_get:
+            mock_get.return_value = MagicMock(status_code=200, json=lambda: fio_response)
+            flask_app.check_fio_payments()
+
+        with app.app_context():
+            db = flask_app.get_db()
+            row = db.execute("SELECT payment_status FROM registrace WHERE variable_symbol = 50").fetchone()
+            assert row['payment_status'] == 'pending'
+
+    def test_handles_network_error(self, app):
+        import app as flask_app
+        with patch('app.requests.get') as mock_get:
+            mock_get.side_effect = Exception('Network error')
+            flask_app.check_fio_payments()
+
+
+# ── Registration edge cases ─────────────────────────────────────────
+
+
+class TestRegistrationEdgeCases:
+    def test_send_payment_nonexistent_returns_404(self, admin_client):
+        r = admin_client.post('/admin/registrace/9999/send-payment')
+        assert r.status_code == 404
+
+    def test_send_payment_no_iban_configured(self, admin_client, app):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute("INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
+                       ('Test', 'test@test.cz'))
+            db.commit()
+            row = db.execute("SELECT id FROM registrace WHERE name = 'Test'").fetchone()
+            reg_id = row['id']
+            db.execute("INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)",
+                       ('bank_iban', ''))
+            db.commit()
+
+        r = admin_client.post(f'/admin/registrace/{reg_id}/send-payment',
+                              follow_redirects=True)
+        assert 'nastaveny' in r.data.decode().lower()
+
+    def test_deny_nonexistent_registration_returns_404(self, admin_client):
+        r = admin_client.get('/admin/registrace/9999/deny')
+        assert r.status_code == 404
+
+    def test_deny_nonexistent_registration_post_returns_404(self, admin_client):
+        r = admin_client.post('/admin/registrace/9999/deny', data={'reason': 'test'})
+        assert r.status_code == 404
+
+
+# ── Email sending tests ─────────────────────────────────────────────
+
+
+class TestEmailSending:
+    def test_send_email_no_recipient(self, app):
+        from app import send_email
+        with app.app_context():
+            send_email('', 'Test', '<p>body</p>')
+
+    def test_send_email_no_smtp_configured(self, app):
+        from app import send_email
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            for username in ['adam', 'michal']:
+                db.execute("INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)",
+                           (f'smtp_host_{username}', ''))
+            db.commit()
+            send_email('test@test.cz', 'Test', '<p>body</p>')

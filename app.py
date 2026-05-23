@@ -31,8 +31,26 @@ app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__), 'static', 
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = not app.debug
 
 limiter = Limiter(get_remote_address, app=app, default_limits=[], storage_uri="memory://")
+
+
+def generate_csrf_token():
+    if '_csrf_token' not in session:
+        session['_csrf_token'] = secrets.token_hex(32)
+    return session['_csrf_token']
+
+
+app.jinja_env.globals['csrf_token'] = generate_csrf_token
+
+
+@app.before_request
+def check_csrf():
+    if request.method == 'POST':
+        token = request.form.get('_csrf_token') or request.headers.get('X-CSRF-Token')
+        if not token or token != session.get('_csrf_token'):
+            abort(403)
 
 ALLOWED_UPLOAD_EXTENSIONS = {'jpg', 'jpeg', 'png', 'gif', 'webp', 'gpx', 'zip', 'pdf'}
 
@@ -624,6 +642,12 @@ def internal_error(e):
                          'Omlouváme se, došlo k neočekávané chybě. Zkuste to prosím později.')
 
 
+@app.errorhandler(403)
+def forbidden(e):
+    return _render_error(403, 'Přístup odepřen',
+                         'Nemáte oprávnění pro přístup k tomuto zdroji.')
+
+
 @app.errorhandler(429)
 def ratelimit_handler(e):
     return _render_error(429, 'Příliš mnoho požadavků',
@@ -707,6 +731,9 @@ def registrace():
         if not name:
             flash('Jméno je povinné.', 'error')
             return render_template('registrace.html')
+        if not email:
+            flash('E-mail je povinný.', 'error')
+            return render_template('registrace.html')
         db = get_db()
         db.execute(
             'INSERT INTO registrace (name, email, phone, note) VALUES (?, ?, ?, ?)',
@@ -770,8 +797,8 @@ def admin_set_password():
     if request.method == 'POST':
         password = request.form.get('password', '')
         password2 = request.form.get('password2', '')
-        if len(password) < 6:
-            flash('Heslo musí mít alespoň 6 znaků.', 'error')
+        if len(password) < 8:
+            flash('Heslo musí mít alespoň 8 znaků.', 'error')
             return render_template('admin/set_password.html')
         if password != password2:
             flash('Hesla se neshodují.', 'error')
@@ -813,8 +840,8 @@ def admin_change_password():
         if not bcrypt.checkpw(current.encode(), admin['password_hash'].encode()):
             flash('Současné heslo je nesprávné.', 'error')
             return render_template('admin/change_password.html')
-        if len(new_pw) < 6:
-            flash('Nové heslo musí mít alespoň 6 znaků.', 'error')
+        if len(new_pw) < 8:
+            flash('Nové heslo musí mít alespoň 8 znaků.', 'error')
             return render_template('admin/change_password.html')
         if new_pw != new_pw2:
             flash('Nová hesla se neshodují.', 'error')
@@ -946,8 +973,8 @@ def admin_reset_password(token):
         password = request.form.get('password', '')
         password2 = request.form.get('password2', '')
 
-        if len(password) < 6:
-            flash('Heslo musí mít alespoň 6 znaků.', 'error')
+        if len(password) < 8:
+            flash('Heslo musí mít alespoň 8 znaků.', 'error')
             return render_template('admin/reset_password.html', token=token)
         if password != password2:
             flash('Hesla se neshodují.', 'error')

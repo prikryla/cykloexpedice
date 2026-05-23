@@ -6,6 +6,7 @@
 <div class="flex items-center justify-between mb-6">
     <h1 class="text-2xl font-bold">Registrace</h1>
     <form method="POST" action="{{ url_for('admin_check_payments') }}">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition">
             <i class="bi bi-arrow-repeat"></i> Zkontrolovat platby
         </button>
@@ -104,6 +105,7 @@
                         <div class="flex items-center justify-end gap-2">
                             {% if r.status == 'pending' %}
                             <form method="POST" action="{{ url_for('admin_registrace_approve', id=r.id) }}" class="inline">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                                 <button class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-700 text-sm font-medium rounded-lg hover:bg-green-100 transition" title="Schválit">
                                     <i class="bi bi-check-circle"></i> Schválit
                                 </button>
@@ -115,12 +117,14 @@
                             {% endif %}
                             {% if r.status == 'approved' and r.payment_status != 'paid' %}
                             <form method="POST" action="{{ url_for('admin_registrace_send_payment', id=r.id) }}" class="inline">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                                 <button class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 text-sm font-medium rounded-lg hover:bg-blue-100 transition" title="Odeslat platební QR">
                                     <i class="bi bi-qr-code"></i> {% if r.payment_status == 'pending' %}Znovu QR{% else %}Odeslat QR{% endif %}
                                 </button>
                             </form>
                             {% endif %}
                             <form method="POST" action="{{ url_for('admin_registrace_delete', id=r.id) }}" class="inline">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                                 <button type="button"
                                         class="inline-flex items-center gap-1 px-2.5 py-1.5 bg-red-50 text-red-700 text-sm rounded-lg hover:bg-red-100 transition" title="Smazat"
                                         onclick="openDeleteModal(this.closest('form'), &quot;Opravdu chcete smazat registraci od {{ r.name|e }}?&quot;)">

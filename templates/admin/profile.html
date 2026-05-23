@@ -9,6 +9,7 @@
 
 <div class="max-w-lg space-y-6">
     <form method="POST">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
         <div class="space-y-6">
             <div class="bg-white rounded-xl shadow p-6 space-y-4">
                 <h2 class="font-bold">Základní údaje</h2>

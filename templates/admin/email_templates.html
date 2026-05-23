@@ -10,6 +10,7 @@
 </div>
 
 <form method="POST" id="templates-form">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
     <div x-data="{ open: null }" class="space-y-4">
         {% for tpl in templates %}
         <div class="bg-white rounded-xl shadow overflow-hidden">
@@ -132,6 +133,7 @@ function previewTemplate(key) {
     var formData = new FormData();
     formData.append('subject', subject);
     formData.append('body', body);
+    formData.append('_csrf_token', '{{ csrf_token() }}');
 
     fetch('{{ url_for("admin_email_template_preview") }}', {
         method: 'POST',

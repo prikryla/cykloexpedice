@@ -4,6 +4,7 @@ import sqlite3
 from datetime import datetime
 import pytest
 import bcrypt
+from flask.testing import FlaskClient
 
 # Prevent real DB/API connections during tests
 os.environ['TESTING'] = '1'
@@ -98,6 +99,25 @@ class SqliteConnectionWrapper:
             self._conn.close()
 
 
+CSRF_TEST_TOKEN = 'test-csrf-token'
+
+
+class CsrfTestClient(FlaskClient):
+    """Test client that auto-injects CSRF tokens into POST requests."""
+
+    def post(self, *args, **kwargs):
+        with self.session_transaction() as sess:
+            sess.setdefault('_csrf_token', CSRF_TEST_TOKEN)
+            token = sess['_csrf_token']
+        data = kwargs.get('data')
+        if data is None:
+            kwargs['data'] = {'_csrf_token': token}
+        elif isinstance(data, dict) and '_csrf_token' not in data:
+            data['_csrf_token'] = token
+            kwargs['data'] = data
+        return super().post(*args, **kwargs)
+
+
 @pytest.fixture()
 def app(monkeypatch):
     """Create a Flask app wired to an in-memory SQLite database."""
@@ -107,16 +127,14 @@ def app(monkeypatch):
     conn.row_factory = sqlite3.Row
 
     def fake_connect():
-        # Return a non-closeable wrapper so Flask's close_db() doesn't kill
-        # the shared in-memory connection between requests.
         return SqliteConnectionWrapper(conn, closeable=False)
 
     monkeypatch.setattr(flask_app, '_connect_db', fake_connect)
     flask_app.app.config['TESTING'] = True
     flask_app.app.config['SECRET_KEY'] = 'test-secret'
+    flask_app.app.test_client_class = CsrfTestClient
     flask_app.limiter.enabled = False
 
-    # Initialize tables
     flask_app.init_db()
 
     yield flask_app.app
