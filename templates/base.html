@@ -155,7 +155,6 @@
             if(diff <= 0){
                 document.getElementById('maintenance-overlay').remove();
                 document.body.classList.remove('overflow-hidden', 'h-screen');
-                location.reload();
                 return;
             }
             var d = Math.floor(diff/86400000), h = Math.floor((diff%86400000)/3600000),
