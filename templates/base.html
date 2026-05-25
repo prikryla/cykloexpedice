@@ -152,7 +152,12 @@
         function pad(n){ return n < 10 ? '0' + n : n; }
         function tick(){
             var now = Date.now(), diff = deadline - now;
-            if(diff <= 0){ location.reload(); return; }
+            if(diff <= 0){
+                document.getElementById('maintenance-overlay').remove();
+                document.body.classList.remove('overflow-hidden', 'h-screen');
+                location.reload();
+                return;
+            }
             var d = Math.floor(diff/86400000), h = Math.floor((diff%86400000)/3600000),
                 m = Math.floor((diff%3600000)/60000), s = Math.floor((diff%60000)/1000);
             document.getElementById('cd-days').textContent = d;

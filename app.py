@@ -605,6 +605,10 @@ def inject_globals():
             deadline = datetime.fromisoformat(until)
             if datetime.now() < deadline:
                 maintenance_active = True
+            else:
+                db.execute("UPDATE site_settings SET value = '0' WHERE key = 'maintenance_enabled'")
+                db.commit()
+                settings['maintenance_enabled'] = '0'
         except (ValueError, TypeError):
             pass
     return dict(etapy_nav=etapy, settings=settings, now=datetime.now(),
