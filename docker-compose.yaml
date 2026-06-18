@@ -5,8 +5,13 @@ services:
     ports:
       - "127.0.0.1:5000:5000"
     env_file: .env
+    volumes:
+      - uploads:/app/static/uploads
     networks:
       - infra_default
+
+volumes:
+  uploads:
 
 networks:
   infra_default:
