@@ -576,6 +576,20 @@ def login_required(f):
     return decorated
 
 
+def youtube_to_embed(url):
+    """Convert various YouTube URL formats to embeddable nocookie URL."""
+    m = re.match(r'(?:https?://)?(?:www\.)?youtube\.com/watch\?v=([A-Za-z0-9_-]+)', url)
+    if not m:
+        m = re.match(r'(?:https?://)?youtu\.be/([A-Za-z0-9_-]+)', url)
+    if not m:
+        m = re.match(r'(?:https?://)?(?:www\.)?youtube\.com/embed/([A-Za-z0-9_-]+)', url)
+    if not m:
+        m = re.match(r'(?:https?://)?(?:www\.)?youtube-nocookie\.com/embed/([A-Za-z0-9_-]+)', url)
+    if m:
+        return f'https://www.youtube-nocookie.com/embed/{m.group(1)}'
+    return url
+
+
 def save_file(file, prefix=''):
     if file and file.filename:
         ext = os.path.splitext(file.filename)[1].lower().lstrip('.')
@@ -690,7 +704,8 @@ def etapa(number):
     row = db.execute('SELECT * FROM etapy WHERE number = ?', (number,)).fetchone()
     if not row:
         abort(404)
-    youtube = json.loads(row['youtube_links']) if row['youtube_links'] else []
+    youtube_raw = json.loads(row['youtube_links']) if row['youtube_links'] else []
+    youtube = [youtube_to_embed(u) for u in youtube_raw]
     prev_e = db.execute('SELECT number FROM etapy WHERE number < ? ORDER BY number DESC LIMIT 1', (number,)).fetchone()
     next_e = db.execute('SELECT number FROM etapy WHERE number > ? ORDER BY number ASC LIMIT 1', (number,)).fetchone()
     return render_template('etapa.html', etapa=row, youtube=youtube,

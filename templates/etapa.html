@@ -128,14 +128,14 @@
         <div class="bg-white rounded-2xl shadow-md p-6 md:p-8 mb-10">
             <h3 class="font-display text-2xl text-dark-900 tracking-wide mb-5">VÝŠKOVÝ PROFIL</h3>
             <img src="{{ url_for('static', filename='uploads/' + etapa.profile_image) }}"
-                 alt="Výškový profil" class="w-full rounded-xl">
+                 alt="Výškový profil" class="max-w-xl w-full rounded-xl">
         </div>
         {% endif %}
 
         <!-- Description -->
         {% if etapa.description %}
         <div class="bg-dark-900 text-white rounded-2xl shadow-md p-8 md:p-12 mb-10">
-            <p class="text-olive-500 font-semibold text-sm uppercase tracking-[0.15em] mb-3">Kudy povedou</p>
+            <p class="text-olive-500 font-semibold text-sm uppercase tracking-[0.15em] mb-3">Kudy pojedeme</p>
             <h2 class="font-display text-3xl md:text-4xl tracking-wide mb-6">POPIS TRASY</h2>
             <div class="section-divider mb-8"></div>
             <div class="prose prose-lg prose-invert max-w-none prose-p:text-gray-300 prose-p:leading-relaxed">
