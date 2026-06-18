@@ -1359,3 +1359,249 @@ class TestEmailSending:
                            (f'smtp_host_{username}', ''))
             db.commit()
             send_email('test@test.cz', 'Test', '<p>body</p>')
+
+
+# ── YouTube embed converter tests ──────────────────────────────────
+
+
+class TestYoutubeToEmbed:
+    def test_watch_url(self):
+        from app import youtube_to_embed
+        result = youtube_to_embed('https://www.youtube.com/watch?v=dQw4w9WgXcQ')
+        assert result == 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ'
+
+    def test_short_url(self):
+        from app import youtube_to_embed
+        result = youtube_to_embed('https://youtu.be/dQw4w9WgXcQ')
+        assert result == 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ'
+
+    def test_embed_url(self):
+        from app import youtube_to_embed
+        result = youtube_to_embed('https://www.youtube.com/embed/dQw4w9WgXcQ')
+        assert result == 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ'
+
+    def test_nocookie_url_passthrough(self):
+        from app import youtube_to_embed
+        result = youtube_to_embed('https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ')
+        assert result == 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ'
+
+    def test_watch_url_without_www(self):
+        from app import youtube_to_embed
+        result = youtube_to_embed('https://youtube.com/watch?v=abc123_-X')
+        assert result == 'https://www.youtube-nocookie.com/embed/abc123_-X'
+
+    def test_invalid_url_returned_as_is(self):
+        from app import youtube_to_embed
+        assert youtube_to_embed('https://example.com/video') == 'https://example.com/video'
+
+    def test_empty_string(self):
+        from app import youtube_to_embed
+        assert youtube_to_embed('') == ''
+
+
+# ── Contact page content tests ─────────────────────────────────────
+
+
+class TestContactPage:
+    def test_contact_page_shows_phone_numbers(self, client):
+        r = client.get('/kontakt')
+        html = r.data.decode()
+        assert '+420 725 604 608' in html
+        assert '+420 607 128 731' in html
+
+    def test_contact_page_shows_emails(self, client):
+        r = client.get('/kontakt')
+        html = r.data.decode()
+        assert 'michal.prikryl@atlas.cz' in html
+        assert 'adam.prikryl7@gmail.com' in html
+
+    def test_contact_page_has_tel_links(self, client):
+        r = client.get('/kontakt')
+        html = r.data.decode()
+        assert 'href="tel:+420725604608"' in html
+        assert 'href="tel:+420607128731"' in html
+
+    def test_contact_page_has_mailto_links(self, client):
+        r = client.get('/kontakt')
+        html = r.data.decode()
+        assert 'href="mailto:michal.prikryl@atlas.cz"' in html
+        assert 'href="mailto:adam.prikryl7@gmail.com"' in html
+
+
+# ── Etapa elevation profile rendering tests ────────────────────────
+
+
+class TestEtapaElevationProfile:
+    def test_elevation_profile_rendered(self, app, client):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO etapy (number, title, elevation_up, elevation_down) "
+                "VALUES (?, ?, ?, ?)",
+                (1, 'Test Etapa', '338 m', '398 m'))
+            db.commit()
+
+        r = client.get('/etapa/1')
+        html = r.data.decode()
+        assert 'VÝŠKOVÝ PROFIL' in html
+        assert '338 m' in html
+        assert '398 m' in html
+        assert 'Stoupání' in html
+        assert 'Klesání' in html
+
+    def test_elevation_profile_hidden_without_data(self, app, client):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO etapy (number, title) VALUES (?, ?)",
+                (1, 'No Elevation'))
+            db.commit()
+
+        r = client.get('/etapa/1')
+        html = r.data.decode()
+        assert 'VÝŠKOVÝ PROFIL' not in html
+
+    def test_elevation_svg_rendered(self, app, client):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO etapy (number, title, elevation_up, elevation_down) "
+                "VALUES (?, ?, ?, ?)",
+                (1, 'SVG Test', '500 m', '400 m'))
+            db.commit()
+
+        r = client.get('/etapa/1')
+        html = r.data.decode()
+        assert '<svg' in html
+        assert 'hillGrad' in html
+
+
+# ── Etapa YouTube embed integration tests ──────────────────────────
+
+
+class TestEtapaYoutubeEmbed:
+    def test_youtube_links_converted_to_nocookie(self, app, client):
+        import json as json_mod
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            links = json_mod.dumps(['https://www.youtube.com/watch?v=test123'])
+            db.execute(
+                "INSERT INTO etapy (number, title, youtube_links) VALUES (?, ?, ?)",
+                (1, 'YT Test', links))
+            db.commit()
+
+        r = client.get('/etapa/1')
+        html = r.data.decode()
+        assert 'youtube-nocookie.com/embed/test123' in html
+        assert 'youtube.com/watch' not in html
+
+    def test_multiple_youtube_links(self, app, client):
+        import json as json_mod
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            links = json_mod.dumps([
+                'https://youtu.be/vid1',
+                'https://www.youtube.com/watch?v=vid2',
+            ])
+            db.execute(
+                "INSERT INTO etapy (number, title, youtube_links) VALUES (?, ?, ?)",
+                (1, 'Multi YT', links))
+            db.commit()
+
+        r = client.get('/etapa/1')
+        html = r.data.decode()
+        assert 'youtube-nocookie.com/embed/vid1' in html
+        assert 'youtube-nocookie.com/embed/vid2' in html
+
+
+# ── Route timeline rendering tests ─────────────────────────────────
+
+
+class TestRouteTimeline:
+    def test_index_shows_route_timeline(self, app, client):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO etapy (number, title, distance, route, color) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (1, 'Etapa Jedna', '85 km', 'Blansko - Znojmo', '#ff6600'))
+            db.commit()
+
+        r = client.get('/')
+        html = r.data.decode()
+        assert 'ETAPY EXPEDICE' in html
+        assert 'BLANSKO' in html
+        assert 'ZNOJMO' in html
+        assert '85 km' in html
+
+    def test_index_timeline_links_to_etapa(self, app, client):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO etapy (number, title, route) VALUES (?, ?, ?)",
+                (1, 'Test', 'A - B'))
+            db.commit()
+
+        r = client.get('/')
+        html = r.data.decode()
+        assert '/etapa/1' in html
+
+    def test_propozice_shows_route_timeline(self, app, client):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO etapy (number, title, distance, route, color) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (1, 'Prop Etapa', '100 km', 'Praha - Brno', '#ffc107'))
+            db.commit()
+
+        r = client.get('/propozice')
+        html = r.data.decode()
+        assert 'TRASA EXPEDICE' in html
+        assert 'PRAHA' in html
+        assert 'BRNO' in html
+
+    def test_context_processor_provides_route_and_color(self, app, client):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO etapy (number, title, distance, route, color) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (1, 'Color Test', '50 km', 'X - Y', '#e74c3c'))
+            db.commit()
+
+        r = client.get('/')
+        html = r.data.decode()
+        assert '#e74c3c' in html
+
+
+# ── Wave divider tests ─────────────────────────────────────────────
+
+
+class TestWaveDividers:
+    def test_index_has_wave_divider(self, app, client):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO etapy (number, title, route) VALUES (?, ?, ?)",
+                (1, 'Wave Test', 'A - B'))
+            db.commit()
+
+        r = client.get('/')
+        html = r.data.decode()
+        assert 'viewBox="0 0 1440 80"' in html
+
+    def test_propozice_has_wave_dividers(self, client):
+        r = client.get('/propozice')
+        html = r.data.decode()
+        assert html.count('viewBox="0 0 1440 80"') >= 1
