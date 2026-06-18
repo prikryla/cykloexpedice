@@ -607,7 +607,7 @@ def save_file(file, prefix=''):
 def inject_globals():
     try:
         db = get_db()
-        etapy = db.execute('SELECT number, title FROM etapy ORDER BY number').fetchall()
+        etapy = db.execute('SELECT number, title, distance, route, color FROM etapy ORDER BY number').fetchall()
         settings = get_settings()
     except Exception:
         etapy = []
