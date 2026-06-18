@@ -45,7 +45,7 @@
                         {% if u.food_info %}
                         <div class="flex items-start gap-3">
                             <i class="bi bi-cup-hot text-gold-500 mt-0.5"></i>
-                            <div><span class="font-semibold text-dark-900">Stravování:</span> {{ u.food_info|safe }}</div>
+                            <div class="[&_a]:text-gold-600 [&_a]:underline [&_a]:hover:text-gold-500"><span class="font-semibold text-dark-900">Stravování:</span> {{ u.food_info|safe }}</div>
                         </div>
                         {% endif %}
                     </div>
