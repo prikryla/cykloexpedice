@@ -124,11 +124,56 @@
         </div>
 
         <!-- Elevation profile -->
-        {% if etapa.profile_image %}
-        <div class="bg-white rounded-2xl shadow-md p-6 md:p-8 mb-10">
-            <h3 class="font-display text-2xl text-dark-900 tracking-wide mb-5">VÝŠKOVÝ PROFIL</h3>
-            <img src="{{ url_for('static', filename='uploads/' + etapa.profile_image) }}"
-                 alt="Výškový profil" class="max-w-xl w-full rounded-xl mx-auto">
+        {% if etapa.elevation_up or etapa.elevation_down %}
+        <div class="bg-white rounded-2xl shadow-md overflow-hidden mb-10">
+            <div class="p-6 md:p-8">
+                <h3 class="font-display text-2xl text-dark-900 tracking-wide mb-6">VÝŠKOVÝ PROFIL</h3>
+                <div class="relative">
+                    <svg viewBox="0 0 800 200" class="w-full" preserveAspectRatio="none">
+                        <defs>
+                            <linearGradient id="hillGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" style="stop-color: {{ etapa.color or '#fbb01f' }}; stop-opacity: 0.3;" />
+                                <stop offset="100%" style="stop-color: {{ etapa.color or '#fbb01f' }}; stop-opacity: 0.05;" />
+                            </linearGradient>
+                            <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
+                                <stop offset="0%" style="stop-color: #6b8e50;" />
+                                <stop offset="50%" style="stop-color: {{ etapa.color or '#fbb01f' }};" />
+                                <stop offset="100%" style="stop-color: #6b8e50;" />
+                            </linearGradient>
+                        </defs>
+                        <path d="M0,180 C50,178 100,170 150,140 C200,110 230,80 300,60 C370,40 400,45 450,70 C500,95 530,120 580,100 C630,80 680,110 730,130 C760,140 790,160 800,165 L800,200 L0,200 Z"
+                              fill="url(#hillGrad)" />
+                        <path d="M0,180 C50,178 100,170 150,140 C200,110 230,80 300,60 C370,40 400,45 450,70 C500,95 530,120 580,100 C630,80 680,110 730,130 C760,140 790,160 800,165"
+                              fill="none" stroke="url(#lineGrad)" stroke-width="3" stroke-linecap="round" />
+                        <circle cx="0" cy="180" r="5" fill="#6b8e50" />
+                        <circle cx="800" cy="165" r="5" fill="#6b8e50" />
+                    </svg>
+                </div>
+                <div class="flex justify-center gap-8 md:gap-16 mt-6">
+                    {% if etapa.elevation_up %}
+                    <div class="flex items-center gap-3 bg-olive-500/10 rounded-xl px-5 py-3">
+                        <div class="w-10 h-10 rounded-full bg-olive-500/20 flex items-center justify-center">
+                            <i class="bi bi-arrow-up text-lg text-olive-600"></i>
+                        </div>
+                        <div>
+                            <div class="text-xs text-gray-500 uppercase tracking-wider font-semibold">Stoupání</div>
+                            <div class="font-display text-xl text-dark-900">{{ etapa.elevation_up }}</div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% if etapa.elevation_down %}
+                    <div class="flex items-center gap-3 bg-red-50 rounded-xl px-5 py-3">
+                        <div class="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                            <i class="bi bi-arrow-down text-lg text-red-500"></i>
+                        </div>
+                        <div>
+                            <div class="text-xs text-gray-500 uppercase tracking-wider font-semibold">Klesání</div>
+                            <div class="font-display text-xl text-dark-900">{{ etapa.elevation_down }}</div>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
         </div>
         {% endif %}
 
