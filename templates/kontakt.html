@@ -10,25 +10,35 @@
         <h1 class="font-display text-5xl md:text-7xl tracking-wide mb-4">KONTAKT</h1>
         <div class="section-divider mx-auto mb-10"></div>
 
-        <div class="grid md:grid-cols-2 gap-8 max-w-lg mx-auto">
+        <div class="grid md:grid-cols-2 gap-8 max-w-2xl mx-auto">
             <div class="bg-white/5 backdrop-blur rounded-2xl p-8 border border-white/10">
                 <div class="w-14 h-14 rounded-full bg-gold-500/10 flex items-center justify-center mx-auto mb-4">
                     <i class="bi bi-person text-xl text-gold-500"></i>
                 </div>
-                <p class="font-display text-xl tracking-wide">{{ settings.contact_name_1|upper }}</p>
+                <p class="font-display text-xl tracking-wide mb-4">{{ settings.contact_name_1|upper }}</p>
+                <div class="space-y-2 text-sm">
+                    <a href="tel:+420725604608" class="flex items-center justify-center gap-2 text-gray-300 hover:text-gold-500 transition">
+                        <i class="bi bi-telephone text-gold-500"></i> +420 725 604 608
+                    </a>
+                    <a href="mailto:michal.prikryl@atlas.cz" class="flex items-center justify-center gap-2 text-gray-300 hover:text-gold-500 transition">
+                        <i class="bi bi-envelope text-gold-500"></i> michal.prikryl@atlas.cz
+                    </a>
+                </div>
             </div>
             <div class="bg-white/5 backdrop-blur rounded-2xl p-8 border border-white/10">
                 <div class="w-14 h-14 rounded-full bg-gold-500/10 flex items-center justify-center mx-auto mb-4">
                     <i class="bi bi-person text-xl text-gold-500"></i>
                 </div>
-                <p class="font-display text-xl tracking-wide">{{ settings.contact_name_2|upper }}</p>
+                <p class="font-display text-xl tracking-wide mb-4">{{ settings.contact_name_2|upper }}</p>
+                <div class="space-y-2 text-sm">
+                    <a href="tel:+420607128731" class="flex items-center justify-center gap-2 text-gray-300 hover:text-gold-500 transition">
+                        <i class="bi bi-telephone text-gold-500"></i> +420 607 128 731
+                    </a>
+                    <a href="mailto:adam.prikryl7@gmail.com" class="flex items-center justify-center gap-2 text-gray-300 hover:text-gold-500 transition">
+                        <i class="bi bi-envelope text-gold-500"></i> adam.prikryl7@gmail.com
+                    </a>
+                </div>
             </div>
-        </div>
-
-        <div class="mt-10">
-            <a href="mailto:{{ settings.contact_email }}" class="btn-gold text-lg !px-10 !py-4">
-                <i class="bi bi-envelope mr-2"></i> {{ settings.contact_email }}
-            </a>
         </div>
     </div>
 </section>

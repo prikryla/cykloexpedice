@@ -278,15 +278,14 @@
                         <li><a href="{{ url_for('kontakt') }}" class="text-gray-400 hover:text-white text-sm transition flex items-center gap-2"><i class="bi bi-chevron-right text-gold-500/50 text-xs"></i>Kontakt</a></li>
                     </ul>
                 </div>
+                {% if settings.fotky_enabled == '1' %}
                 <div>
-                    <h4 class="font-display text-sm uppercase tracking-widest mb-5 text-gold-500">Registrace</h4>
+                    <h4 class="font-display text-sm uppercase tracking-widest mb-5 text-gold-500">Fotky</h4>
                     <ul class="space-y-3">
-                        <li><a href="{{ url_for('registrace') }}" class="text-gray-400 hover:text-white text-sm transition flex items-center gap-2"><i class="bi bi-chevron-right text-gold-500/50 text-xs"></i>Přihlášení na expedici</a></li>
-                        {% if settings.fotky_enabled == '1' %}
                         <li><a href="{{ url_for('fotky') }}" class="text-gray-400 hover:text-white text-sm transition flex items-center gap-2"><i class="bi bi-chevron-right text-gold-500/50 text-xs"></i>Fotogalerie</a></li>
-                        {% endif %}
                     </ul>
                 </div>
+                {% endif %}
                 <div>
                     <h4 class="font-display text-sm uppercase tracking-widest mb-5 text-gold-500">Kontakt</h4>
                     <div class="space-y-4 text-sm">
