@@ -152,29 +152,122 @@
     </div>
 </section>
 
-<!-- Route overview -->
-<section class="py-20 bg-dark-900 text-white">
-    <div class="max-w-6xl mx-auto px-4">
-        <div class="text-center mb-14">
+<!-- Editable detailed content (from admin) -->
+{% if content %}
+<section class="py-20 bg-cream-50">
+    <div class="max-w-3xl mx-auto px-4">
+        <div class="text-center mb-12">
+            <p class="text-olive-500 font-semibold text-sm uppercase tracking-[0.15em] mb-3">Podrobnosti</p>
+            <h2 class="font-display text-4xl text-dark-900 tracking-wide">DŮLEŽITÉ INFORMACE</h2>
+            <div class="section-divider mx-auto mt-4"></div>
+        </div>
+        <div class="bg-white rounded-2xl shadow-md p-8 md:p-12 prose prose-lg max-w-none
+                    prose-headings:font-display prose-headings:tracking-wide prose-headings:text-dark-900
+                    prose-h2:text-3xl prose-h3:text-2xl
+                    prose-a:text-gold-600 prose-a:no-underline hover:prose-a:text-gold-500
+                    prose-strong:text-dark-900
+                    prose-p:text-gray-600 prose-p:leading-relaxed">
+            {{ content|safe }}
+        </div>
+    </div>
+</section>
+{% endif %}
+
+<!-- Route timeline -->
+{% if etapy_nav %}
+<section class="py-20 md:py-28 bg-dark-900 relative overflow-hidden">
+    <div class="absolute inset-0 opacity-10"
+         style="background-image: url('https://images.unsplash.com/photo-1507035895480-2b3156c31fc8?w=1920&q=80'); background-size: cover; background-position: center;"></div>
+    <div class="relative max-w-5xl mx-auto px-4">
+        <div class="text-center mb-16">
             <p class="text-olive-500 font-semibold text-sm uppercase tracking-[0.15em] mb-3">Kam nás cesta zavede</p>
-            <h2 class="font-display text-4xl md:text-5xl tracking-wide">TRASA EXPEDICE</h2>
+            <h2 class="font-display text-4xl md:text-5xl text-white tracking-wide">TRASA EXPEDICE</h2>
             <div class="section-divider mx-auto mt-4"></div>
         </div>
 
-        <div class="grid md:grid-cols-{{ etapy_nav|length }} gap-6">
+        <!-- Desktop: horizontal timeline -->
+        <div class="hidden md:block">
+            <div class="flex items-start">
+                {% for e in etapy_nav %}
+                {% set cities = e.route.split(' - ') if e.route else [e.title, ''] %}
+                {% if loop.first %}
+                <div class="flex flex-col items-center shrink-0" style="width: 90px;">
+                    <div class="w-6 h-6 rounded-full bg-olive-500 border-4 border-dark-900 shadow-lg shadow-olive-500/30 z-10"></div>
+                    <p class="font-display text-sm text-white tracking-wide mt-3 text-center leading-tight">{{ cities[0]|upper }}</p>
+                </div>
+                {% endif %}
+
+                <a href="{{ url_for('etapa', number=e.number) }}" class="flex-1 group relative -mx-1">
+                    <div class="flex-1 flex flex-col items-center">
+                        <div class="w-full h-6 flex items-center">
+                            <div class="w-full h-1 rounded-full transition-all duration-300 group-hover:h-1.5"
+                                 style="background: {{ e.color or '#fbb01f' }};"></div>
+                        </div>
+                        <div class="mt-4 text-center transition-transform duration-300 group-hover:-translate-y-1">
+                            <span class="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-full px-5 py-2 border border-white/10 group-hover:bg-white/15 group-hover:border-gold-500/40 transition-all duration-300">
+                                <i class="bi bi-bicycle" style="color: {{ e.color or '#fbb01f' }};"></i>
+                                <span class="font-display text-sm tracking-wide text-white">{{ e.title|upper }}</span>
+                            </span>
+                            {% if e.distance %}
+                            <p class="text-xs text-gray-400 mt-2 font-semibold">{{ e.distance }}</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </a>
+
+                <div class="flex flex-col items-center shrink-0" style="width: 90px;">
+                    <div class="w-6 h-6 rounded-full border-4 border-dark-900 shadow-lg z-10"
+                         style="background: {{ e.color or '#fbb01f' }};"></div>
+                    <p class="font-display text-sm text-white tracking-wide mt-3 text-center leading-tight">
+                        {{ cities[-1]|upper if cities|length > 1 else ''}}
+                    </p>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Mobile: vertical timeline -->
+        <div class="md:hidden max-w-xs mx-auto">
             {% for e in etapy_nav %}
-            <a href="{{ url_for('etapa', number=e.number) }}"
-               class="card-hover bg-white/5 backdrop-blur rounded-2xl p-8 text-center border border-white/10 hover:border-gold-500/50 group transition-all duration-300">
-                <div class="font-display text-5xl text-gold-500/30 group-hover:text-gold-500/60 transition mb-2">{{ e.number }}</div>
-                <i class="bi bi-bicycle text-3xl text-gold-500 group-hover:scale-110 transition-transform duration-300 inline-block mb-3"></i>
-                <h3 class="font-display text-xl tracking-wide">{{ e.title|upper }}</h3>
-                <div class="section-divider mx-auto mt-3 mb-3"></div>
-                <p class="text-gray-400 text-sm">Zobrazit detaily trasy <i class="bi bi-arrow-right"></i></p>
+            {% set cities = e.route.split(' - ') if e.route else [e.title, ''] %}
+
+            {% if loop.first %}
+            <div class="flex items-center gap-4">
+                <div class="w-8 flex justify-center shrink-0">
+                    <div class="w-4 h-4 rounded-full bg-olive-500 shadow"></div>
+                </div>
+                <p class="font-display text-base text-white tracking-wide">{{ cities[0]|upper }}</p>
+            </div>
+            {% endif %}
+
+            <a href="{{ url_for('etapa', number=e.number) }}" class="flex gap-4 group">
+                <div class="w-8 flex justify-center shrink-0">
+                    <div class="w-0.5 min-h-[70px]" style="background: {{ e.color or '#fbb01f' }};"></div>
+                </div>
+                <div class="flex-1 py-2">
+                    <span class="inline-flex items-center gap-2 bg-white rounded-full px-4 py-1.5 shadow-sm border border-gray-100 group-hover:shadow-md group-hover:border-gold-500/30 transition-all">
+                        <i class="bi bi-bicycle text-sm" style="color: {{ e.color or '#fbb01f' }};"></i>
+                        <span class="font-display text-sm tracking-wide text-white">{{ e.title|upper }}</span>
+                    </span>
+                    {% if e.distance %}
+                    <p class="text-xs text-gray-400 mt-1 font-semibold ml-1">{{ e.distance }}</p>
+                    {% endif %}
+                </div>
             </a>
+
+            <div class="flex items-center gap-4">
+                <div class="w-8 flex justify-center shrink-0">
+                    <div class="w-4 h-4 rounded-full shadow" style="background: {{ e.color or '#fbb01f' }};"></div>
+                </div>
+                <p class="font-display text-base text-white tracking-wide">
+                    {{ cities[-1]|upper if cities|length > 1 else '' }}
+                </p>
+            </div>
             {% endfor %}
         </div>
     </div>
 </section>
+{% endif %}
 
 <!-- What's included -->
 <section class="py-20 bg-cream-100">
@@ -217,25 +310,4 @@
         </div>
     </div>
 </section>
-
-<!-- Editable detailed content (from admin) -->
-{% if content %}
-<section class="py-20 bg-cream-50">
-    <div class="max-w-3xl mx-auto px-4">
-        <div class="text-center mb-12">
-            <p class="text-olive-500 font-semibold text-sm uppercase tracking-[0.15em] mb-3">Podrobnosti</p>
-            <h2 class="font-display text-4xl text-dark-900 tracking-wide">DŮLEŽITÉ INFORMACE</h2>
-            <div class="section-divider mx-auto mt-4"></div>
-        </div>
-        <div class="bg-white rounded-2xl shadow-md p-8 md:p-12 prose prose-lg max-w-none
-                    prose-headings:font-display prose-headings:tracking-wide prose-headings:text-dark-900
-                    prose-h2:text-3xl prose-h3:text-2xl
-                    prose-a:text-gold-600 prose-a:no-underline hover:prose-a:text-gold-500
-                    prose-strong:text-dark-900
-                    prose-p:text-gray-600 prose-p:leading-relaxed">
-            {{ content|safe }}
-        </div>
-    </div>
-</section>
-{% endif %}
 {% endblock %}
