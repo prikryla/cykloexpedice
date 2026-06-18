@@ -53,10 +53,8 @@
 
 <!-- Etapy Section – Route Timeline -->
 {% if etapy_nav %}
-<section class="py-20 md:py-28 bg-dark-900 relative overflow-hidden">
-    <div class="absolute inset-0 opacity-5"
-         style="background-image: url('https://images.unsplash.com/photo-1507035895480-2b3156c31fc8?w=1920&q=80'); background-size: cover; background-position: center;"></div>
-    <div class="relative max-w-5xl mx-auto px-4">
+<section class="py-20 md:py-28 bg-cream-50">
+    <div class="max-w-5xl mx-auto px-4">
         <div class="text-center mb-16">
             <p class="text-olive-500 font-semibold text-sm uppercase tracking-[0.15em] mb-3">Naše trasa</p>
             <h2 class="font-display text-4xl md:text-5xl text-white tracking-wide">ETAPY EXPEDICE</h2>
@@ -71,8 +69,8 @@
                 {% if loop.first %}
                 <!-- Start city -->
                 <div class="flex flex-col items-center shrink-0" style="width: 90px;">
-                    <div class="w-6 h-6 rounded-full bg-olive-500 border-4 border-dark-900 shadow-lg shadow-olive-500/30 z-10"></div>
-                    <p class="font-display text-sm text-white tracking-wide mt-3 text-center leading-tight">{{ cities[0]|upper }}</p>
+                    <div class="w-6 h-6 rounded-full bg-olive-500 border-4 border-cream-50 shadow-lg shadow-olive-500/30 z-10"></div>
+                    <p class="font-display text-sm text-dark-900 tracking-wide mt-3 text-center leading-tight">{{ cities[0]|upper }}</p>
                 </div>
                 {% endif %}
 
@@ -81,14 +79,14 @@
                     <div class="flex-1 flex flex-col items-center">
                         <!-- Line -->
                         <div class="w-full h-6 flex items-center">
-                            <div class="w-full h-1 transition-all duration-300 group-hover:h-1.5 group-hover:shadow-lg"
-                                 style="background: {{ e.color or '#fbb01f' }}; box-shadow: 0 0 12px {{ e.color or '#fbb01f' }}40;"></div>
+                            <div class="w-full h-1 rounded-full transition-all duration-300 group-hover:h-1.5"
+                                 style="background: {{ e.color or '#fbb01f' }};"></div>
                         </div>
                         <!-- Stage info -->
                         <div class="mt-4 text-center transition-transform duration-300 group-hover:-translate-y-1">
-                            <span class="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-full px-5 py-2 border border-white/10 group-hover:bg-white/15 group-hover:border-gold-500/40 transition-all duration-300">
+                            <span class="inline-flex items-center gap-2 bg-white rounded-full px-5 py-2 shadow-sm border border-gray-100 group-hover:shadow-md group-hover:border-gold-500/30 transition-all duration-300">
                                 <i class="bi bi-bicycle" style="color: {{ e.color or '#fbb01f' }};"></i>
-                                <span class="font-display text-sm tracking-wide text-white">{{ e.title|upper }}</span>
+                                <span class="font-display text-sm tracking-wide text-dark-900">{{ e.title|upper }}</span>
                             </span>
                             {% if e.distance %}
                             <p class="text-xs text-gray-400 mt-2 font-semibold">{{ e.distance }}</p>
@@ -99,9 +97,9 @@
 
                 <!-- City dot -->
                 <div class="flex flex-col items-center shrink-0" style="width: 90px;">
-                    <div class="w-6 h-6 rounded-full border-4 border-dark-900 z-10"
-                         style="background: {{ e.color or '#fbb01f' }}; box-shadow: 0 0 12px {{ e.color or '#fbb01f' }}50;"></div>
-                    <p class="font-display text-sm text-white tracking-wide mt-3 text-center leading-tight">
+                    <div class="w-6 h-6 rounded-full border-4 border-cream-50 shadow-lg z-10"
+                         style="background: {{ e.color or '#fbb01f' }};"></div>
+                    <p class="font-display text-sm text-dark-900 tracking-wide mt-3 text-center leading-tight">
                         {{ cities[-1]|upper if cities|length > 1 else ''}}
                     </p>
                 </div>
@@ -110,29 +108,29 @@
         </div>
 
         <!-- Mobile: vertical timeline -->
-        <div class="md:hidden flex flex-col items-center">
+        <div class="md:hidden max-w-xs mx-auto">
             {% for e in etapy_nav %}
             {% set cities = e.route.split(' - ') if e.route else [e.title, ''] %}
 
             {% if loop.first %}
             <!-- Start city -->
-            <div class="flex items-center gap-4 mb-1">
-                <div class="w-10 flex justify-center shrink-0">
-                    <div class="w-5 h-5 rounded-full bg-olive-500 shadow-lg shadow-olive-500/30"></div>
+            <div class="flex items-center gap-4">
+                <div class="w-8 flex justify-center shrink-0">
+                    <div class="w-4 h-4 rounded-full bg-olive-500 shadow"></div>
                 </div>
-                <p class="font-display text-base text-white tracking-wide">{{ cities[0]|upper }}</p>
+                <p class="font-display text-base text-dark-900 tracking-wide">{{ cities[0]|upper }}</p>
             </div>
             {% endif %}
 
             <!-- Stage segment -->
             <a href="{{ url_for('etapa', number=e.number) }}" class="flex gap-4 group">
-                <div class="w-10 flex justify-center shrink-0">
-                    <div class="w-1 min-h-[80px] rounded-full" style="background: {{ e.color or '#fbb01f' }}; box-shadow: 0 0 8px {{ e.color or '#fbb01f' }}40;"></div>
+                <div class="w-8 flex justify-center shrink-0">
+                    <div class="w-0.5 min-h-[70px]" style="background: {{ e.color or '#fbb01f' }};"></div>
                 </div>
-                <div class="flex-1 py-3">
-                    <span class="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-full px-5 py-2 border border-white/10 group-hover:bg-white/15 group-hover:border-gold-500/40 transition-all">
-                        <i class="bi bi-bicycle" style="color: {{ e.color or '#fbb01f' }};"></i>
-                        <span class="font-display text-sm tracking-wide text-white">{{ e.title|upper }}</span>
+                <div class="flex-1 py-2">
+                    <span class="inline-flex items-center gap-2 bg-white rounded-full px-4 py-1.5 shadow-sm border border-gray-100 group-hover:shadow-md group-hover:border-gold-500/30 transition-all">
+                        <i class="bi bi-bicycle text-sm" style="color: {{ e.color or '#fbb01f' }};"></i>
+                        <span class="font-display text-sm tracking-wide text-dark-900">{{ e.title|upper }}</span>
                     </span>
                     {% if e.distance %}
                     <p class="text-xs text-gray-400 mt-1 font-semibold ml-1">{{ e.distance }}</p>
@@ -141,11 +139,11 @@
             </a>
 
             <!-- End city dot -->
-            <div class="flex items-center gap-4 {% if not loop.last %}mb-1{% endif %}">
-                <div class="w-10 flex justify-center shrink-0">
-                    <div class="w-5 h-5 rounded-full" style="background: {{ e.color or '#fbb01f' }}; box-shadow: 0 0 8px {{ e.color or '#fbb01f' }}40;"></div>
+            <div class="flex items-center gap-4">
+                <div class="w-8 flex justify-center shrink-0">
+                    <div class="w-4 h-4 rounded-full shadow" style="background: {{ e.color or '#fbb01f' }};"></div>
                 </div>
-                <p class="font-display text-base text-white tracking-wide">
+                <p class="font-display text-base text-dark-900 tracking-wide">
                     {{ cities[-1]|upper if cities|length > 1 else '' }}
                 </p>
             </div>
@@ -154,30 +152,6 @@
     </div>
 </section>
 {% endif %}
-
-<!-- About / CTA Section -->
-<section class="py-20 bg-dark-900 text-white relative overflow-hidden">
-    <div class="absolute inset-0 opacity-5"
-         style="background-image: url('https://images.unsplash.com/photo-1507035895480-2b3156c31fc8?w=1920&q=80'); background-size: cover; background-position: center;"></div>
-    <div class="relative max-w-4xl mx-auto px-4 text-center">
-        <p class="text-olive-500 font-semibold text-sm uppercase tracking-[0.15em] mb-3">Připoj se k nám</p>
-        <h2 class="font-display text-4xl md:text-5xl tracking-wide mb-6">ZAŽIJTE DOBRODRUŽSTVÍ</h2>
-        <div class="section-divider mx-auto mb-8"></div>
-        <p class="text-lg text-gray-300 leading-relaxed mb-10 max-w-2xl mx-auto">
-            Každoročně organizujeme vícedenní cykloexpedici po nejkrásnějších místech České republiky.
-            Přidej se k partě nadšených cyklistů a objevuj s námi historická města, malebnou krajinu
-            a zapomenuté kouty naší země.
-        </p>
-        <div class="flex flex-wrap justify-center gap-4">
-            <a href="{{ url_for('registrace') }}" class="btn-olive text-base !px-10 !py-4">
-                Chci jet s vámi
-            </a>
-            <a href="{{ url_for('kontakt') }}" class="btn-outline text-base !px-10 !py-4">
-                Kontaktuj nás
-            </a>
-        </div>
-    </div>
-</section>
 
 <!-- Quick Info Cards -->
 <section class="py-20 bg-cream-100">
