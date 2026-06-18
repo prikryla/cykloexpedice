@@ -774,7 +774,7 @@ def registrace():
             subj, html = render_email_template('email_submitted', tpl_vars, settings)
             send_email(email, subj, html)
 
-        flash('Děkujeme za přihlášku! Ozveme se vám.', 'success')
+        flash('Děkujeme za přihlášku! Ozveme se ti.', 'success')
         return redirect(url_for('registrace'))
     return render_template('registrace.html')
 
@@ -1006,7 +1006,7 @@ def admin_reset_password(token):
                    (row['admin_id'], row['id']))
         db.commit()
 
-        flash('Heslo bylo úspěšně změněno. Přihlaste se.', 'success')
+        flash('Heslo bylo úspěšně změněno. Přihlas se.', 'success')
         return redirect(url_for('admin_login'))
 
     return render_template('admin/reset_password.html', token=token)
