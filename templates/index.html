@@ -41,9 +41,15 @@
         <p class="text-xl md:text-2xl text-gray-300 mb-10">{{ settings.event_dates }}</p>
 
         <div class="flex flex-wrap justify-center gap-4">
+            {% if registration_full %}
+            <span class="text-base !px-10 !py-4 inline-block rounded-full bg-gray-600 text-gray-300 font-semibold cursor-default px-10 py-4">
+                Kapacita naplněna
+            </span>
+            {% else %}
             <a href="{{ url_for('registrace') }}" class="btn-gold text-base !px-10 !py-4">
                 <i class="bi bi-bicycle mr-2"></i> Přihlásit se
             </a>
+            {% endif %}
             <a href="{{ url_for('propozice') }}" class="btn-outline text-base !px-10 !py-4">
                 Propozice
             </a>

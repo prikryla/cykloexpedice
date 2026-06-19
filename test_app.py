@@ -1309,6 +1309,124 @@ class TestCheckFioPaymentsEdgeCases:
 # ── Registration edge cases ─────────────────────────────────────────
 
 
+class TestRegistrationCapacity:
+    """Tests for the MAX_CAPACITY=30 registration limit."""
+
+    def _fill_approved(self, app, count):
+        """Insert `count` approved registrations into the database."""
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            for i in range(count):
+                db.execute(
+                    "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
+                    (f'User {i}', f'user{i}@test.cz'))
+            db.commit()
+
+    def test_form_visible_under_capacity(self, app, client):
+        self._fill_approved(app, 10)
+        r = client.get('/registrace')
+        html = r.data.decode()
+        assert 'Odeslat přihlášku' in html
+        assert 'KAPACITA NAPLNĚNA' not in html
+
+    def test_form_hidden_at_capacity(self, app, client):
+        self._fill_approved(app, 30)
+        r = client.get('/registrace')
+        html = r.data.decode()
+        assert 'Odeslat přihlášku' not in html
+        assert 'KAPACITA NAPLNĚNA' in html
+
+    def test_form_hidden_above_capacity(self, app, client):
+        self._fill_approved(app, 35)
+        r = client.get('/registrace')
+        html = r.data.decode()
+        assert 'KAPACITA NAPLNĚNA' in html
+
+    def test_post_blocked_at_capacity(self, app, client):
+        self._fill_approved(app, 30)
+        with patch('app.send_email'):
+            r = client.post('/registrace', data={
+                'name': 'Late User',
+                'email': 'late@test.cz',
+            }, follow_redirects=True)
+        html = r.data.decode()
+        assert 'naplněna' in html.lower()
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            row = db.execute("SELECT COUNT(*) c FROM registrace WHERE name = 'Late User'").fetchone()
+            assert row['c'] == 0
+
+    def test_post_allowed_under_capacity(self, app, client):
+        self._fill_approved(app, 29)
+        with patch('app.send_email'):
+            r = client.post('/registrace', data={
+                'name': 'Just In Time',
+                'email': 'just@test.cz',
+            }, follow_redirects=True)
+        html = r.data.decode()
+        assert 'Děkujeme' in html
+
+    def test_pending_registrations_dont_count(self, app, client):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            for i in range(35):
+                db.execute(
+                    "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'pending')",
+                    (f'Pending {i}', f'pending{i}@test.cz'))
+            db.commit()
+        r = client.get('/registrace')
+        html = r.data.decode()
+        assert 'Odeslat přihlášku' in html
+
+    def test_denied_registrations_dont_count(self, app, client):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            for i in range(35):
+                db.execute(
+                    "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'denied')",
+                    (f'Denied {i}', f'denied{i}@test.cz'))
+            db.commit()
+        r = client.get('/registrace')
+        html = r.data.decode()
+        assert 'Odeslat přihlášku' in html
+
+    def test_nav_button_disabled_at_capacity(self, app, client):
+        self._fill_approved(app, 30)
+        r = client.get('/')
+        html = r.data.decode()
+        assert html.count('Kapacita naplněna') >= 2
+
+    def test_nav_button_enabled_under_capacity(self, app, client):
+        self._fill_approved(app, 10)
+        r = client.get('/')
+        html = r.data.decode()
+        assert 'Kapacita naplněna' not in html
+        assert 'Přihlásit se' in html
+
+    def test_hero_button_disabled_at_capacity(self, app, client):
+        self._fill_approved(app, 30)
+        r = client.get('/')
+        html = r.data.decode()
+        assert 'Kapacita naplněna' in html
+        assert 'bi-bicycle' not in html
+
+    def test_zero_approved_shows_form(self, client):
+        r = client.get('/registrace')
+        html = r.data.decode()
+        assert 'Odeslat přihlášku' in html
+
+    def test_exactly_29_allows_registration(self, app, client):
+        self._fill_approved(app, 29)
+        r = client.get('/registrace')
+        html = r.data.decode()
+        assert 'Odeslat přihlášku' in html
+        assert 'KAPACITA NAPLNĚNA' not in html
+
+
 class TestRegistrationEdgeCases:
     def test_send_payment_nonexistent_returns_404(self, admin_client):
         r = admin_client.post('/admin/registrace/9999/send-payment')

@@ -53,6 +53,7 @@ def check_csrf():
             abort(403)
 
 ALLOWED_UPLOAD_EXTENSIONS = {'jpg', 'jpeg', 'png', 'gif', 'webp', 'gpx', 'zip', 'pdf'}
+MAX_CAPACITY = 30
 
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
 FIO_API_TOKEN = os.environ.get('FIO_API_TOKEN', '')
@@ -625,8 +626,13 @@ def inject_globals():
                 settings['maintenance_enabled'] = '0'
         except (ValueError, TypeError):
             pass
+    try:
+        approved = db.execute("SELECT COUNT(*) c FROM registrace WHERE status = 'approved'").fetchone()['c']
+    except Exception:
+        approved = 0
+    registration_full = approved >= MAX_CAPACITY
     return dict(etapy_nav=etapy, settings=settings, now=datetime.now(),
-                maintenance_active=maintenance_active)
+                maintenance_active=maintenance_active, registration_full=registration_full)
 
 
 # ── Error handlers ────────────────────────────────────────────────
@@ -743,6 +749,11 @@ def kontakt():
 @limiter.limit("5 per minute", methods=["POST"])
 def registrace():
     if request.method == 'POST':
+        db = get_db()
+        approved = db.execute("SELECT COUNT(*) c FROM registrace WHERE status = 'approved'").fetchone()['c']
+        if approved >= MAX_CAPACITY:
+            flash('Kapacita expedice je naplněna.', 'error')
+            return redirect(url_for('registrace'))
         name = request.form.get('name', '').strip()
         email = request.form.get('email', '').strip()
         phone = request.form.get('phone', '').strip()

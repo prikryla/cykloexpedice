@@ -202,7 +202,11 @@
                     </div>
                     <a href="{{ url_for('ubytovani') }}" class="px-3 py-2 rounded-full text-sm font-semibold hover:bg-white/10 transition">Ubytování</a>
                     <a href="{{ url_for('kontakt') }}" class="px-3 py-2 rounded-full text-sm font-semibold hover:bg-white/10 transition">Kontakt</a>
+                    {% if registration_full %}
+                    <span class="ml-2 !py-2.5 !px-6 !text-xs inline-block rounded-full bg-gray-600 text-gray-300 font-semibold cursor-default text-xs py-2.5 px-6">Kapacita naplněna</span>
+                    {% else %}
                     <a href="{{ url_for('registrace') }}" class="btn-gold ml-2 !py-2.5 !px-6 !text-xs">Přihlásit se</a>
+                    {% endif %}
                 </div>
             </div>
 
@@ -218,7 +222,11 @@
                 {% endfor %}
                 <a href="{{ url_for('ubytovani') }}" class="block px-3 py-2.5 rounded-lg hover:bg-white/10">Ubytování</a>
                 <a href="{{ url_for('kontakt') }}" class="block px-3 py-2.5 rounded-lg hover:bg-white/10">Kontakt</a>
+                {% if registration_full %}
+                <span class="block text-center mt-2 !py-2.5 rounded-full bg-gray-600 text-gray-300 font-semibold cursor-default py-2.5">Kapacita naplněna</span>
+                {% else %}
                 <a href="{{ url_for('registrace') }}" class="block text-center btn-gold mt-2 !py-2.5">Přihlásit se</a>
+                {% endif %}
             </div>
         </div>
     </nav>

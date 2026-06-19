@@ -9,7 +9,7 @@ from flask.testing import FlaskClient
 # Prevent real DB/API connections during tests
 os.environ['TESTING'] = '1'
 os.environ.setdefault('DATABASE_URL', 'unused')
-os.environ.setdefault('FIO_API_TOKEN', 'test-token')
+os.environ['FIO_API_TOKEN'] = 'test-token'
 os.environ['SECRET_KEY'] = 'test-secret'
 
 
@@ -130,6 +130,7 @@ def app(monkeypatch):
         return SqliteConnectionWrapper(conn, closeable=False)
 
     monkeypatch.setattr(flask_app, '_connect_db', fake_connect)
+    monkeypatch.setattr(flask_app, 'FIO_API_TOKEN', 'test-token')
     flask_app.app.config['TESTING'] = True
     flask_app.app.config['SECRET_KEY'] = 'test-secret'
     flask_app.app.test_client_class = CsrfTestClient
