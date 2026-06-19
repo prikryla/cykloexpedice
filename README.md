@@ -4,11 +4,11 @@ Web application for **Cykloexpedice** — an annual multi-day cycling expedition
 
 ## Features
 
-- **Public site** — event info, route stages with GPX downloads, photo gallery, news, accommodation overview, and online registration
+- **Public site** — event info, route stages with interactive timeline and elevation profiles, SVG wave section dividers, photo gallery, news (aktuality), accommodation overview, contact page, and online registration
 - **Admin panel** — registration management (approve / deny / delete), email notifications with branded templates, editable site content (stages, news, accommodation, event settings)
 - **Payments** — automatic matching via Fio Banka API, QR code generation for bank transfers
 - **Email system** — per-admin SMTP configuration, customizable HTML templates with live preview
-- **Czech language support** — vocative case for personalized greetings (via `vokativ`)
+- **Czech language support** — informal address (tykání), vocative case for personalized greetings (via `vokativ`)
 
 ## Tech Stack
 
@@ -17,19 +17,21 @@ Web application for **Cykloexpedice** — an annual multi-day cycling expedition
 | Backend     | Python · Flask                      |
 | Database    | PostgreSQL (psycopg2)               |
 | Frontend    | Tailwind CSS (CDN) · Alpine.js (CDN)|
+| Maps        | Leaflet · GPX track rendering       |
 | Deployment  | Hetzner · Docker · Gunicorn         |
 
 ## Project Structure
 
 ```
-app.py           # Application entry point (routes, models, helpers)
-templates/       # Jinja2 templates (public site + admin panel)
-static/          # CSS, uploads, media
-test_app.py      # Test suite
-conftest.py      # Test fixtures
-start.sh         # Local dev startup script
-Dockerfile       # Container image definition
-docker-compose.yaml # Docker Compose service config
+app.py              # Application entry point (routes, models, helpers)
+templates/           # Jinja2 templates (public site + admin panel)
+static/              # CSS, uploads, media
+test_app.py          # Test suite
+conftest.py          # Test fixtures
+requirements.txt     # Python dependencies
+start.sh             # Local dev startup script
+Dockerfile           # Container image definition
+docker-compose.yaml  # Docker Compose service config
 ```
 
 ## Environment Variables
