@@ -22,7 +22,7 @@
                     </div>
                     <div>
                         <h2 class="font-display text-2xl text-dark-900 tracking-wide">{{ a.title|upper }}</h2>
-                        <p class="text-xs text-gray-400 uppercase tracking-wider">{{ a.created_at }}</p>
+                        <p class="text-xs text-gray-400 uppercase tracking-wider">{{ a.created_at.strftime('%H:%M:%S') }}</p>
                     </div>
                 </div>
                 <div class="prose max-w-none prose-p:text-gray-600 prose-p:leading-relaxed prose-a:text-gold-600 prose-strong:text-dark-900">
