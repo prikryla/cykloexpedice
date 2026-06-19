@@ -1363,6 +1363,27 @@ def admin_registrace_deny(id):
     return render_template('admin/registrace_deny.html', reg=reg)
 
 
+@app.route('/admin/registrace/<int:id>/edit', methods=['GET', 'POST'])
+@login_required
+def admin_registrace_edit(id):
+    db = get_db()
+    reg = db.execute('SELECT * FROM registrace WHERE id = ?', (id,)).fetchone()
+    if not reg:
+        abort(404)
+
+    if request.method == 'POST':
+        name = request.form.get('name', '').strip()
+        if not name:
+            flash('Jméno nesmí být prázdné.', 'error')
+            return render_template('admin/registrace_edit.html', reg=reg)
+        db.execute('UPDATE registrace SET name = ? WHERE id = ?', (name, id))
+        db.commit()
+        flash(f'Jméno bylo změněno na „{name}".', 'success')
+        return redirect(url_for('admin_registrace'))
+
+    return render_template('admin/registrace_edit.html', reg=reg)
+
+
 @app.route('/admin/registrace/<int:id>/delete', methods=['POST'])
 @login_required
 def admin_registrace_delete(id):

@@ -79,7 +79,12 @@
                         <span class="px-2.5 py-1 bg-amber-100 text-amber-700 text-xs rounded-full font-semibold">Čeká</span>
                         {% endif %}
                     </td>
-                    <td class="px-4 py-3 font-medium">{{ r.name }}</td>
+                    <td class="px-4 py-3 font-medium">
+                        {{ r.name }}
+                        <a href="{{ url_for('admin_registrace_edit', id=r.id) }}" class="ml-1 text-gray-400 hover:text-blue-600 transition" title="Upravit jméno">
+                            <i class="bi bi-pencil-square text-xs"></i>
+                        </a>
+                    </td>
                     <td class="px-4 py-3 text-gray-500">
                         {% if r.email %}<a href="mailto:{{ r.email }}" class="text-blue-600 hover:underline">{{ r.email }}</a>{% else %}–{% endif %}
                     </td>
