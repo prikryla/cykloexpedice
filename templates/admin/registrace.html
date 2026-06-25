@@ -5,12 +5,19 @@
 {% block content %}
 <div class="flex items-center justify-between mb-6">
     <h1 class="text-2xl font-bold">Registrace</h1>
-    <form method="POST" action="{{ url_for('admin_check_payments') }}">
-                    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition">
-            <i class="bi bi-arrow-repeat"></i> Zkontrolovat platby
+    <div class="flex items-center gap-3">
+        <button type="button" id="bulk-delete-btn" disabled
+                class="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                onclick="openBulkDeleteModal()">
+            <i class="bi bi-trash3"></i> <span id="bulk-delete-label">Smazat vybrané</span>
         </button>
-    </form>
+        <form method="POST" action="{{ url_for('admin_check_payments') }}">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition">
+                <i class="bi bi-arrow-repeat"></i> Zkontrolovat platby
+            </button>
+        </form>
+    </div>
 </div>
 
 <!-- Status tabs -->
@@ -51,11 +58,17 @@
 </form>
 
 {% if registrace %}
+<form id="bulk-delete-form" method="POST" action="{{ url_for('admin_registrace_bulk_delete') }}">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+</form>
 <div class="bg-white rounded-xl shadow overflow-hidden">
     <div class="overflow-x-auto">
         <table class="w-full">
             <thead class="bg-gray-50 text-left text-sm text-gray-500 uppercase">
                 <tr>
+                    <th class="px-4 py-3">
+                        <input type="checkbox" id="select-all" class="w-4 h-4 rounded border-gray-300 text-red-600 focus:ring-red-500" onchange="toggleAll(this)">
+                    </th>
                     <th class="px-4 py-3">Stav</th>
                     <th class="px-4 py-3">Jméno</th>
                     <th class="px-4 py-3">E-mail</th>
@@ -70,6 +83,9 @@
             <tbody class="divide-y divide-gray-100">
                 {% for r in registrace %}
                 <tr class="hover:bg-gray-50">
+                    <td class="px-4 py-3">
+                        <input type="checkbox" name="ids" value="{{ r.id }}" form="bulk-delete-form" class="row-checkbox w-4 h-4 rounded border-gray-300 text-red-600 focus:ring-red-500" onchange="updateBulkBtn()">
+                    </td>
                     <td class="px-4 py-3">
                         {% if r.status == 'approved' %}
                         <span class="px-2.5 py-1 bg-green-100 text-green-700 text-xs rounded-full font-semibold">Schváleno</span>
@@ -150,4 +166,26 @@
     <p>{% if query %}Žádné výsledky pro "{{ query }}".{% else %}Zatím žádné registrace.{% endif %}</p>
 </div>
 {% endif %}
+
+<script>
+function toggleAll(master) {
+    document.querySelectorAll('.row-checkbox').forEach(function(cb) { cb.checked = master.checked; });
+    updateBulkBtn();
+}
+function updateBulkBtn() {
+    var checked = document.querySelectorAll('.row-checkbox:checked');
+    var btn = document.getElementById('bulk-delete-btn');
+    var label = document.getElementById('bulk-delete-label');
+    btn.disabled = checked.length === 0;
+    label.textContent = checked.length > 0 ? 'Smazat vybrané (' + checked.length + ')' : 'Smazat vybrané';
+    var all = document.querySelectorAll('.row-checkbox');
+    var master = document.getElementById('select-all');
+    if (master) master.checked = all.length > 0 && checked.length === all.length;
+}
+function openBulkDeleteModal() {
+    var count = document.querySelectorAll('.row-checkbox:checked').length;
+    if (count === 0) return;
+    openDeleteModal(document.getElementById('bulk-delete-form'), 'Opravdu chcete smazat ' + count + ' vybraných registrací?');
+}
+</script>
 {% endblock %}

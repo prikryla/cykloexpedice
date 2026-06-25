@@ -146,6 +146,7 @@ class TestRegistration:
                 'email': 'jan@test.cz',
                 'phone': '123456789',
                 'note': 'Test note',
+                'gdpr_consent': 'on',
             }, follow_redirects=True)
             assert r.status_code == 200
             assert 'Děkujeme' in r.data.decode()
@@ -166,6 +167,160 @@ class TestRegistration:
         })
         assert r.status_code == 200
         assert 'povinný' in r.data.decode().lower()
+
+
+class TestRegistrationPhoneValidation:
+    def _post(self, client, phone):
+        return client.post('/registrace', data={
+            'name': 'Test User',
+            'email': 'test@seznam.cz',
+            'phone': phone,
+            'gdpr_consent': 'on',
+        }, follow_redirects=True)
+
+    def test_valid_cz_prefix(self, client):
+        with patch('app.send_email'):
+            r = self._post(client, '+420 777 123 456')
+        assert 'Děkujeme' in r.data.decode()
+
+    def test_valid_sk_prefix(self, client):
+        with patch('app.send_email'):
+            r = self._post(client, '+421905123456')
+        assert 'Děkujeme' in r.data.decode()
+
+    def test_valid_nine_digits_no_prefix(self, client):
+        with patch('app.send_email'):
+            r = self._post(client, '777123456')
+        assert 'Děkujeme' in r.data.decode()
+
+    def test_valid_nine_digits_with_spaces(self, client):
+        with patch('app.send_email'):
+            r = self._post(client, '777 123 456')
+        assert 'Děkujeme' in r.data.decode()
+
+    def test_empty_phone_allowed(self, client):
+        with patch('app.send_email'):
+            r = self._post(client, '')
+        assert 'Děkujeme' in r.data.decode()
+
+    def test_reject_us_prefix(self, client):
+        r = self._post(client, '+1-604-597-9167')
+        assert 'předvolba' in r.data.decode().lower()
+
+    def test_reject_uk_prefix(self, client):
+        r = self._post(client, '+44 7911 123456')
+        assert 'předvolba' in r.data.decode().lower()
+
+    def test_reject_de_prefix(self, client):
+        r = self._post(client, '+49 170 1234567')
+        assert 'předvolba' in r.data.decode().lower()
+
+    def test_reject_too_few_digits(self, client):
+        r = self._post(client, '12345678')
+        assert 'číslic' in r.data.decode().lower()
+
+    def test_reject_too_many_digits(self, client):
+        r = self._post(client, '1234567890')
+        assert 'číslic' in r.data.decode().lower()
+
+    def test_reject_cz_prefix_wrong_digit_count(self, client):
+        r = self._post(client, '+420 12345678')
+        html = r.data.decode().lower()
+        assert 'neplatné' in html
+
+    def test_reject_letters_in_phone(self, client):
+        r = self._post(client, 'abcdefghi')
+        assert 'číslic' in r.data.decode().lower()
+
+    def test_valid_cz_prefix_with_dashes(self, client):
+        with patch('app.send_email'):
+            r = self._post(client, '+420-777-123-456')
+        assert 'Děkujeme' in r.data.decode()
+
+
+class TestRegistrationEmailValidation:
+    def _post(self, client, email):
+        return client.post('/registrace', data={
+            'name': 'Test User',
+            'email': email,
+            'gdpr_consent': 'on',
+        }, follow_redirects=True)
+
+    def test_valid_cz_domain(self, client):
+        with patch('app.send_email'):
+            r = self._post(client, 'user@seznam.cz')
+        assert 'Děkujeme' in r.data.decode()
+
+    def test_valid_sk_domain(self, client):
+        with patch('app.send_email'):
+            r = self._post(client, 'user@azet.sk')
+        assert 'Děkujeme' in r.data.decode()
+
+    def test_valid_com_domain(self, client):
+        with patch('app.send_email'):
+            r = self._post(client, 'user@gmail.com')
+        assert 'Děkujeme' in r.data.decode()
+
+    def test_reject_exotic_tld(self, client):
+        r = self._post(client, 'user@example.xyz')
+        assert 'Neplatná' in r.data.decode()
+
+    def test_reject_org_tld(self, client):
+        r = self._post(client, 'user@example.org')
+        assert 'Neplatná' in r.data.decode()
+
+    def test_reject_net_tld(self, client):
+        r = self._post(client, 'user@example.net')
+        assert 'Neplatná' in r.data.decode()
+
+    def test_reject_io_tld(self, client):
+        r = self._post(client, 'user@example.io')
+        assert 'Neplatná' in r.data.decode()
+
+    def test_reject_no_at_sign(self, client):
+        r = self._post(client, 'invalidemail')
+        assert 'Neplatná' in r.data.decode()
+
+    def test_reject_ru_tld(self, client):
+        r = self._post(client, 'bot@spam.ru')
+        assert 'Neplatná' in r.data.decode()
+
+    def test_valid_custom_cz_domain(self, client):
+        with patch('app.send_email'):
+            r = self._post(client, 'info@mojedomena.cz')
+        assert 'Děkujeme' in r.data.decode()
+
+
+class TestRegistrationGDPR:
+    def test_reject_without_gdpr(self, client):
+        r = client.post('/registrace', data={
+            'name': 'Test User',
+            'email': 'test@test.cz',
+        }, follow_redirects=True)
+        assert 'osobních údajů' in r.data.decode().lower()
+
+    def test_accept_with_gdpr(self, client):
+        with patch('app.send_email'):
+            r = client.post('/registrace', data={
+                'name': 'Test User',
+                'email': 'test@test.cz',
+                'gdpr_consent': 'on',
+            }, follow_redirects=True)
+        assert 'Děkujeme' in r.data.decode()
+
+    def test_not_stored_in_db(self, app, client):
+        with patch('app.send_email'):
+            client.post('/registrace', data={
+                'name': 'GDPR Test',
+                'email': 'gdpr@test.cz',
+                'gdpr_consent': 'on',
+            }, follow_redirects=True)
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            row = db.execute("SELECT * FROM registrace WHERE name = 'GDPR Test'").fetchone()
+            assert row is not None
+            assert 'gdpr_consent' not in dict(row)
 
 
 # ── Admin auth tests ─────────────────────────────────────────────
@@ -373,6 +528,74 @@ class TestAdminRegistrace:
     def test_approve_nonexistent_returns_404(self, admin_client):
         r = admin_client.post('/admin/registrace/9999/approve')
         assert r.status_code == 404
+
+
+class TestAdminBulkDelete:
+    def _create_registrations(self, app, count=3):
+        ids = []
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            for i in range(count):
+                db.execute('INSERT INTO registrace (name, email) VALUES (?, ?)',
+                           (f'Bulk User {i}', f'bulk{i}@test.cz'))
+            db.commit()
+            rows = db.execute('SELECT id FROM registrace ORDER BY id').fetchall()
+            ids = [r['id'] for r in rows]
+        return ids
+
+    def test_bulk_delete_multiple(self, admin_client, app):
+        ids = self._create_registrations(app, 3)
+        r = admin_client.post('/admin/registrace/bulk-delete',
+                              data={'ids': [ids[0], ids[1]]},
+                              follow_redirects=True)
+        assert r.status_code == 200
+        assert 'Smazáno 2' in r.data.decode()
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            remaining = db.execute('SELECT COUNT(*) c FROM registrace').fetchone()['c']
+            assert remaining == 1
+
+    def test_bulk_delete_all(self, admin_client, app):
+        ids = self._create_registrations(app, 3)
+        r = admin_client.post('/admin/registrace/bulk-delete',
+                              data={'ids': ids},
+                              follow_redirects=True)
+        assert r.status_code == 200
+        assert 'Smazáno 3' in r.data.decode()
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            remaining = db.execute('SELECT COUNT(*) c FROM registrace').fetchone()['c']
+            assert remaining == 0
+
+    def test_bulk_delete_no_ids(self, admin_client):
+        r = admin_client.post('/admin/registrace/bulk-delete',
+                              data={},
+                              follow_redirects=True)
+        assert r.status_code == 200
+
+    def test_bulk_delete_single(self, admin_client, app):
+        ids = self._create_registrations(app, 2)
+        r = admin_client.post('/admin/registrace/bulk-delete',
+                              data={'ids': ids[0]},
+                              follow_redirects=True)
+        assert r.status_code == 200
+        assert 'Smazáno 1' in r.data.decode()
+
+    def test_bulk_delete_requires_login(self, client):
+        r = client.post('/admin/registrace/bulk-delete',
+                        data={'ids': [1, 2]})
+        assert r.status_code == 302
+
+    def test_bulk_delete_page_has_checkboxes(self, admin_client, app):
+        self._create_registrations(app, 2)
+        r = admin_client.get('/admin/registrace')
+        html = r.data.decode()
+        assert 'select-all' in html
+        assert 'row-checkbox' in html
+        assert 'bulk-delete-btn' in html
 
 
 # ── Payment tests ────────────────────────────────────────────────
@@ -888,6 +1111,7 @@ class TestCSRFProtection:
             r = client.post('/registrace', data={
                 'name': 'Test User',
                 'email': 'test@test.cz',
+                'gdpr_consent': 'on',
             }, follow_redirects=True)
             assert r.status_code == 200
 
@@ -1349,6 +1573,7 @@ class TestRegistrationCapacity:
             r = client.post('/registrace', data={
                 'name': 'Late User',
                 'email': 'late@test.cz',
+                'gdpr_consent': 'on',
             }, follow_redirects=True)
         html = r.data.decode()
         assert 'naplněna' in html.lower()
@@ -1364,6 +1589,7 @@ class TestRegistrationCapacity:
             r = client.post('/registrace', data={
                 'name': 'Just In Time',
                 'email': 'just@test.cz',
+                'gdpr_consent': 'on',
             }, follow_redirects=True)
         html = r.data.decode()
         assert 'Děkujeme' in html

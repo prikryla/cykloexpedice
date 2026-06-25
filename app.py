@@ -35,6 +35,8 @@ app.config['SESSION_COOKIE_SECURE'] = not app.debug
 
 limiter = Limiter(get_remote_address, app=app, default_limits=[], storage_uri="memory://")
 
+ALLOWED_EMAIL_TLDS = ('.cz', '.sk', '.com')
+
 
 def generate_csrf_token():
     if '_csrf_token' not in session:
@@ -764,6 +766,27 @@ def registrace():
         if not email:
             flash('E-mail je povinný.', 'error')
             return render_template('registrace.html')
+        email_domain = email.rsplit('@', 1)[-1].lower() if '@' in email else ''
+        if not email_domain or not any(email_domain.endswith(tld) for tld in ALLOWED_EMAIL_TLDS):
+            flash('Neplatná e-mailová adresa.', 'error')
+            return render_template('registrace.html')
+        if phone:
+            cleaned = phone.replace(' ', '').replace('-', '')
+            if cleaned.startswith('+'):
+                if not cleaned.startswith('+420') and not cleaned.startswith('+421'):
+                    flash('Povolená předvolba je pouze +420 nebo +421.', 'error')
+                    return render_template('registrace.html')
+                digits_after = cleaned[4:]
+                if not digits_after.isdigit() or len(digits_after) != 9:
+                    flash('Neplatné telefonní číslo.', 'error')
+                    return render_template('registrace.html')
+            else:
+                if not cleaned.isdigit() or len(cleaned) != 9:
+                    flash('Telefonní číslo musí mít 9 číslic.', 'error')
+                    return render_template('registrace.html')
+        if not request.form.get('gdpr_consent'):
+            flash('Souhlas se zpracováním osobních údajů je povinný.', 'error')
+            return render_template('registrace.html')
         db = get_db()
         db.execute(
             'INSERT INTO registrace (name, email, phone, note) VALUES (?, ?, ?, ?)',
@@ -1382,6 +1405,19 @@ def admin_registrace_edit(id):
         return redirect(url_for('admin_registrace'))
 
     return render_template('admin/registrace_edit.html', reg=reg)
+
+
+@app.route('/admin/registrace/bulk-delete', methods=['POST'])
+@login_required
+def admin_registrace_bulk_delete():
+    ids = request.form.getlist('ids', type=int)
+    if ids:
+        db = get_db()
+        placeholders = ','.join('?' * len(ids))
+        db.execute(f'DELETE FROM registrace WHERE id IN ({placeholders})', ids)
+        db.commit()
+        flash(f'Smazáno {len(ids)} registrací.', 'success')
+    return redirect(url_for('admin_registrace'))
 
 
 @app.route('/admin/registrace/<int:id>/delete', methods=['POST'])
