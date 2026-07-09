@@ -11,6 +11,12 @@
                 onclick="openBulkDeleteModal()">
             <i class="bi bi-trash3"></i> <span id="bulk-delete-label">Smazat vybrané</span>
         </button>
+        <form method="POST" action="{{ url_for('admin_registrace_bulk_send_payment') }}" onsubmit="return confirm('Odeslat platební QR všem schváleným registracím, které ještě nemají QR?');">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition">
+                <i class="bi bi-qr-code"></i> Odeslat QR všem
+            </button>
+        </form>
         <form method="POST" action="{{ url_for('admin_check_payments') }}">
                         <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition">

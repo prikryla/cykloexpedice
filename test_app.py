@@ -669,6 +669,102 @@ class TestPayments:
             assert call_args[0][3] == 'WACHAU_Jan_Novák'  # message argument
 
 
+class TestBulkSendPayment:
+    def test_bulk_send_payment_sends_to_all_approved(self, admin_client, app):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
+                ('User One', 'one@test.cz'))
+            db.execute(
+                "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
+                ('User Two', 'two@test.cz'))
+            db.commit()
+
+        with patch('app.send_email') as mock_email:
+            r = admin_client.post('/admin/registrace/bulk-send-payment',
+                                  follow_redirects=True)
+        assert r.status_code == 200
+        assert mock_email.call_count == 2
+        assert '2' in r.data.decode()
+
+    def test_bulk_send_skips_already_sent(self, admin_client, app):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO registrace (name, email, status, payment_status) "
+                "VALUES (?, ?, 'approved', 'pending')",
+                ('Already Sent', 'sent@test.cz'))
+            db.execute(
+                "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
+                ('Not Sent', 'new@test.cz'))
+            db.commit()
+
+        with patch('app.send_email') as mock_email:
+            r = admin_client.post('/admin/registrace/bulk-send-payment',
+                                  follow_redirects=True)
+        assert r.status_code == 200
+        assert mock_email.call_count == 1
+
+    def test_bulk_send_skips_non_approved(self, admin_client, app):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'pending')",
+                ('Pending', 'p@test.cz'))
+            db.execute(
+                "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'denied')",
+                ('Denied', 'd@test.cz'))
+            db.commit()
+
+        with patch('app.send_email') as mock_email:
+            r = admin_client.post('/admin/registrace/bulk-send-payment',
+                                  follow_redirects=True)
+        assert r.status_code == 200
+        assert mock_email.call_count == 0
+
+    def test_bulk_send_no_registrations(self, admin_client):
+        r = admin_client.post('/admin/registrace/bulk-send-payment',
+                              follow_redirects=True)
+        assert r.status_code == 200
+        assert 'ádné' in r.data.decode()
+
+    def test_bulk_send_sets_unique_variable_symbols(self, admin_client, app):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
+                ('A User', 'a@test.cz'))
+            db.execute(
+                "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
+                ('B User', 'b@test.cz'))
+            db.commit()
+
+        with patch('app.send_email'):
+            admin_client.post('/admin/registrace/bulk-send-payment')
+
+        with app.app_context():
+            db = flask_app.get_db()
+            rows = db.execute(
+                "SELECT variable_symbol FROM registrace WHERE status = 'approved'"
+            ).fetchall()
+            symbols = [r['variable_symbol'] for r in rows]
+            assert len(set(symbols)) == len(symbols)
+
+    def test_bulk_send_requires_login(self, client):
+        r = client.post('/admin/registrace/bulk-send-payment')
+        assert r.status_code == 302
+        assert 'login' in r.headers['Location']
+
+    def test_bulk_send_button_present(self, admin_client):
+        r = admin_client.get('/admin/registrace')
+        assert 'bulk-send-payment' in r.data.decode()
+
+
 class TestCheckFioPayments:
     def test_matches_payment_by_vs(self, app):
         import app as flask_app
