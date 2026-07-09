@@ -1055,7 +1055,7 @@ def admin_dashboard():
     stats = {
         'etapy': db.execute('SELECT COUNT(*) c FROM etapy').fetchone()['c'],
         'aktuality': db.execute('SELECT COUNT(*) c FROM aktuality').fetchone()['c'],
-        'registrace': db.execute('SELECT COUNT(*) c FROM registrace').fetchone()['c'],
+        'registrace': db.execute("SELECT COUNT(*) c FROM registrace WHERE status = 'approved'").fetchone()['c'],
         'ubytovani': db.execute('SELECT COUNT(*) c FROM ubytovani').fetchone()['c'],
     }
     return render_template('admin/dashboard.html', stats=stats)

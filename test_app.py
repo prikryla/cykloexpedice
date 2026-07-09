@@ -405,6 +405,21 @@ class TestAdminDashboard:
         r = admin_client.get('/admin')
         assert r.status_code == 200
 
+    def test_dashboard_shows_only_approved_registrations(self, admin_client, app):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute("INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
+                       ('Approved', 'a@test.cz'))
+            db.execute("INSERT INTO registrace (name, email, status) VALUES (?, ?, 'denied')",
+                       ('Denied', 'd@test.cz'))
+            db.execute("INSERT INTO registrace (name, email, status) VALUES (?, ?, 'pending')",
+                       ('Pending', 'p@test.cz'))
+            db.commit()
+        r = admin_client.get('/admin')
+        html = r.data.decode()
+        assert '>1<' in html
+
     def test_settings_page_loads(self, admin_client):
         r = admin_client.get('/admin/nastaveni')
         assert r.status_code == 200
