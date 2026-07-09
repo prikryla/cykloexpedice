@@ -323,6 +323,38 @@ class TestRegistrationGDPR:
             assert 'gdpr_consent' not in dict(row)
 
 
+class TestDuplicateEmailRegistration:
+    def test_reject_duplicate_email(self, client):
+        with patch('app.send_email'):
+            r = client.post('/registrace', data={
+                'name': 'First User',
+                'email': 'duplicate@test.cz',
+                'gdpr_consent': 'on',
+            }, follow_redirects=True)
+        assert 'Děkujeme' in r.data.decode()
+        r2 = client.post('/registrace', data={
+            'name': 'Second User',
+            'email': 'duplicate@test.cz',
+            'gdpr_consent': 'on',
+        }, follow_redirects=True)
+        assert 'již registrována' in r2.data.decode()
+
+    def test_allow_different_email(self, client):
+        with patch('app.send_email'):
+            client.post('/registrace', data={
+                'name': 'First User',
+                'email': 'first@test.cz',
+                'gdpr_consent': 'on',
+            }, follow_redirects=True)
+        with patch('app.send_email'):
+            r = client.post('/registrace', data={
+                'name': 'Second User',
+                'email': 'second@test.cz',
+                'gdpr_consent': 'on',
+            }, follow_redirects=True)
+        assert 'Děkujeme' in r.data.decode()
+
+
 # ── Admin auth tests ─────────────────────────────────────────────
 
 

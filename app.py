@@ -787,7 +787,12 @@ def registrace():
         if not request.form.get('gdpr_consent'):
             flash('Souhlas se zpracováním osobních údajů je povinný.', 'error')
             return render_template('registrace.html')
-        db = get_db()
+        existing = db.execute(
+            'SELECT id FROM registrace WHERE email = ?', (email,)
+        ).fetchone()
+        if existing:
+            flash('Tato e-mailová adresa je již registrována. Pokud máte dotazy, kontaktujte nás.', 'error')
+            return render_template('registrace.html')
         db.execute(
             'INSERT INTO registrace (name, email, phone, note) VALUES (?, ?, ?, ?)',
             (name, email, phone, note)
