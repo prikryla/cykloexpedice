@@ -150,7 +150,23 @@ class TestRegistration:
             }, follow_redirects=True)
             assert r.status_code == 200
             assert 'Děkujeme' in r.data.decode()
-            mock_email.assert_called_once()
+            assert mock_email.call_count == 3  # 1 confirmation + 2 admin notifications
+
+    def test_submit_notifies_admins(self, client):
+        with patch('app.send_email') as mock_email:
+            client.post('/registrace', data={
+                'name': 'Test Notify',
+                'email': 'notify@test.cz',
+                'phone': '',
+                'note': '',
+                'gdpr_consent': 'on',
+            }, follow_redirects=True)
+            recipients = [call[0][0] for call in mock_email.call_args_list]
+            assert 'adam.prikryl7@gmail.com' in recipients
+            assert 'michal.prikryl@atlas.cz' in recipients
+            admin_call = mock_email.call_args_list[1]
+            assert 'Nová přihláška' in admin_call[0][1]
+            assert 'Test Notify' in admin_call[0][2]
 
     def test_submit_without_name_fails(self, client):
         r = client.post('/registrace', data={
