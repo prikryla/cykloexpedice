@@ -597,6 +597,13 @@ class TestAdminBulkDelete:
         assert 'row-checkbox' in html
         assert 'bulk-delete-btn' in html
 
+    def test_row_click_toggle_handler_present(self, admin_client, app):
+        self._create_registrations(app, 1)
+        r = admin_client.get('/admin/registrace')
+        html = r.data.decode()
+        assert 'toggleRowCheckbox' in html
+        assert 'cursor-pointer' in html
+
 
 # ── Payment tests ────────────────────────────────────────────────
 
