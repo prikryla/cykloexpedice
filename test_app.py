@@ -529,6 +529,40 @@ class TestAdminRegistrace:
         r = admin_client.post('/admin/registrace/9999/approve')
         assert r.status_code == 404
 
+    def test_registrace_ordered_by_status_group(self, admin_client, app):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute("INSERT INTO registrace (name, email, status) VALUES (?, ?, 'denied')",
+                       ('Denied User', 'd@test.cz'))
+            db.execute("INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
+                       ('Approved User', 'a@test.cz'))
+            db.execute("INSERT INTO registrace (name, email, status) VALUES (?, ?, 'pending')",
+                       ('Pending User', 'p@test.cz'))
+            db.commit()
+        r = admin_client.get('/admin/registrace')
+        html = r.data.decode()
+        pending_pos = html.index('Pending User')
+        approved_pos = html.index('Approved User')
+        denied_pos = html.index('Denied User')
+        assert pending_pos < approved_pos < denied_pos
+
+    def test_registrace_section_dividers_shown(self, admin_client, app):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute("INSERT INTO registrace (name, email, status) VALUES (?, ?, 'pending')",
+                       ('Pending', 'p@test.cz'))
+            db.execute("INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
+                       ('Approved', 'a@test.cz'))
+            db.execute("INSERT INTO registrace (name, email, status) VALUES (?, ?, 'denied')",
+                       ('Denied', 'd@test.cz'))
+            db.commit()
+        r = admin_client.get('/admin/registrace')
+        html = r.data.decode()
+        assert 'Schválené' in html
+        assert 'Zamítnuté' in html
+
 
 class TestAdminBulkDelete:
     def _create_registrations(self, app, count=3):
