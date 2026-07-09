@@ -186,6 +186,11 @@
 {% endif %}
 
 <script>
+function toggleRowCheckbox(event, row) {
+    if (event.target.closest('a, button, input, form')) return;
+    var cb = row.querySelector('.row-checkbox');
+    if (cb) { cb.checked = !cb.checked; updateBulkBtn(); }
+}
 function toggleAll(master) {
     document.querySelectorAll('.row-checkbox').forEach(function(cb) { cb.checked = master.checked; });
     updateBulkBtn();
