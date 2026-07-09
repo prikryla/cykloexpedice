@@ -323,6 +323,38 @@ class TestRegistrationGDPR:
             assert 'gdpr_consent' not in dict(row)
 
 
+class TestDuplicateEmailRegistration:
+    def test_reject_duplicate_email(self, client):
+        with patch('app.send_email'):
+            r = client.post('/registrace', data={
+                'name': 'First User',
+                'email': 'duplicate@test.cz',
+                'gdpr_consent': 'on',
+            }, follow_redirects=True)
+        assert 'Děkujeme' in r.data.decode()
+        r2 = client.post('/registrace', data={
+            'name': 'Second User',
+            'email': 'duplicate@test.cz',
+            'gdpr_consent': 'on',
+        }, follow_redirects=True)
+        assert 'již registrována' in r2.data.decode()
+
+    def test_allow_different_email(self, client):
+        with patch('app.send_email'):
+            client.post('/registrace', data={
+                'name': 'First User',
+                'email': 'first@test.cz',
+                'gdpr_consent': 'on',
+            }, follow_redirects=True)
+        with patch('app.send_email'):
+            r = client.post('/registrace', data={
+                'name': 'Second User',
+                'email': 'second@test.cz',
+                'gdpr_consent': 'on',
+            }, follow_redirects=True)
+        assert 'Děkujeme' in r.data.decode()
+
+
 # ── Admin auth tests ─────────────────────────────────────────────
 
 
@@ -404,6 +436,21 @@ class TestAdminDashboard:
     def test_dashboard_loads(self, admin_client):
         r = admin_client.get('/admin')
         assert r.status_code == 200
+
+    def test_dashboard_shows_only_approved_registrations(self, admin_client, app):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute("INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
+                       ('Approved', 'a@test.cz'))
+            db.execute("INSERT INTO registrace (name, email, status) VALUES (?, ?, 'denied')",
+                       ('Denied', 'd@test.cz'))
+            db.execute("INSERT INTO registrace (name, email, status) VALUES (?, ?, 'pending')",
+                       ('Pending', 'p@test.cz'))
+            db.commit()
+        r = admin_client.get('/admin')
+        html = r.data.decode()
+        assert '>1<' in html
 
     def test_settings_page_loads(self, admin_client):
         r = admin_client.get('/admin/nastaveni')
@@ -528,6 +575,40 @@ class TestAdminRegistrace:
     def test_approve_nonexistent_returns_404(self, admin_client):
         r = admin_client.post('/admin/registrace/9999/approve')
         assert r.status_code == 404
+
+    def test_registrace_ordered_by_status_group(self, admin_client, app):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute("INSERT INTO registrace (name, email, status) VALUES (?, ?, 'denied')",
+                       ('Denied User', 'd@test.cz'))
+            db.execute("INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
+                       ('Approved User', 'a@test.cz'))
+            db.execute("INSERT INTO registrace (name, email, status) VALUES (?, ?, 'pending')",
+                       ('Pending User', 'p@test.cz'))
+            db.commit()
+        r = admin_client.get('/admin/registrace')
+        html = r.data.decode()
+        pending_pos = html.index('Pending User')
+        approved_pos = html.index('Approved User')
+        denied_pos = html.index('Denied User')
+        assert pending_pos < approved_pos < denied_pos
+
+    def test_registrace_section_dividers_shown(self, admin_client, app):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute("INSERT INTO registrace (name, email, status) VALUES (?, ?, 'pending')",
+                       ('Pending', 'p@test.cz'))
+            db.execute("INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
+                       ('Approved', 'a@test.cz'))
+            db.execute("INSERT INTO registrace (name, email, status) VALUES (?, ?, 'denied')",
+                       ('Denied', 'd@test.cz'))
+            db.commit()
+        r = admin_client.get('/admin/registrace')
+        html = r.data.decode()
+        assert 'Schválené' in html
+        assert 'Zamítnuté' in html
 
 
 class TestAdminBulkDelete:
@@ -674,6 +755,102 @@ class TestPayments:
             # Check the QR was called with correct message
             call_args = mock_qr.call_args
             assert call_args[0][3] == 'WACHAU_Jan_Novák'  # message argument
+
+
+class TestBulkSendPayment:
+    def test_bulk_send_payment_sends_to_all_approved(self, admin_client, app):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
+                ('User One', 'one@test.cz'))
+            db.execute(
+                "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
+                ('User Two', 'two@test.cz'))
+            db.commit()
+
+        with patch('app.send_email') as mock_email:
+            r = admin_client.post('/admin/registrace/bulk-send-payment',
+                                  follow_redirects=True)
+        assert r.status_code == 200
+        assert mock_email.call_count == 2
+        assert '2' in r.data.decode()
+
+    def test_bulk_send_skips_already_sent(self, admin_client, app):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO registrace (name, email, status, payment_status) "
+                "VALUES (?, ?, 'approved', 'pending')",
+                ('Already Sent', 'sent@test.cz'))
+            db.execute(
+                "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
+                ('Not Sent', 'new@test.cz'))
+            db.commit()
+
+        with patch('app.send_email') as mock_email:
+            r = admin_client.post('/admin/registrace/bulk-send-payment',
+                                  follow_redirects=True)
+        assert r.status_code == 200
+        assert mock_email.call_count == 1
+
+    def test_bulk_send_skips_non_approved(self, admin_client, app):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'pending')",
+                ('Pending', 'p@test.cz'))
+            db.execute(
+                "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'denied')",
+                ('Denied', 'd@test.cz'))
+            db.commit()
+
+        with patch('app.send_email') as mock_email:
+            r = admin_client.post('/admin/registrace/bulk-send-payment',
+                                  follow_redirects=True)
+        assert r.status_code == 200
+        assert mock_email.call_count == 0
+
+    def test_bulk_send_no_registrations(self, admin_client):
+        r = admin_client.post('/admin/registrace/bulk-send-payment',
+                              follow_redirects=True)
+        assert r.status_code == 200
+        assert 'ádné' in r.data.decode()
+
+    def test_bulk_send_sets_unique_variable_symbols(self, admin_client, app):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
+                ('A User', 'a@test.cz'))
+            db.execute(
+                "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
+                ('B User', 'b@test.cz'))
+            db.commit()
+
+        with patch('app.send_email'):
+            admin_client.post('/admin/registrace/bulk-send-payment')
+
+        with app.app_context():
+            db = flask_app.get_db()
+            rows = db.execute(
+                "SELECT variable_symbol FROM registrace WHERE status = 'approved'"
+            ).fetchall()
+            symbols = [r['variable_symbol'] for r in rows]
+            assert len(set(symbols)) == len(symbols)
+
+    def test_bulk_send_requires_login(self, client):
+        r = client.post('/admin/registrace/bulk-send-payment')
+        assert r.status_code == 302
+        assert 'login' in r.headers['Location']
+
+    def test_bulk_send_button_present(self, admin_client):
+        r = admin_client.get('/admin/registrace')
+        assert 'bulk-send-payment' in r.data.decode()
 
 
 class TestCheckFioPayments:

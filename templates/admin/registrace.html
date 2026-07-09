@@ -11,6 +11,12 @@
                 onclick="openBulkDeleteModal()">
             <i class="bi bi-trash3"></i> <span id="bulk-delete-label">Smazat vybrané</span>
         </button>
+        <form method="POST" action="{{ url_for('admin_registrace_bulk_send_payment') }}" onsubmit="return confirm('Odeslat platební QR všem schváleným registracím, které ještě nemají QR?');">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition">
+                <i class="bi bi-qr-code"></i> Odeslat QR všem
+            </button>
+        </form>
         <form method="POST" action="{{ url_for('admin_check_payments') }}">
                         <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition">
@@ -82,7 +88,19 @@
             </thead>
             <tbody class="divide-y divide-gray-100">
                 {% for r in registrace %}
-                <tr class="hover:bg-gray-50 cursor-pointer" onclick="toggleRowCheckbox(event, this)">
+                {% if not status_filter %}
+                {% set prev_status = registrace[loop.index0 - 1].status if loop.index0 > 0 else None %}
+                {% if prev_status != r.status and not loop.first %}
+                <tr>
+                    <td colspan="10" class="px-4 py-2 bg-gray-100">
+                        <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                            {% if r.status == 'approved' %}Schválené{% elif r.status == 'denied' %}Zamítnuté{% endif %}
+                        </span>
+                    </td>
+                </tr>
+                {% endif %}
+                {% endif %}
+                <tr class="hover:bg-gray-50">
                     <td class="px-4 py-3">
                         <input type="checkbox" name="ids" value="{{ r.id }}" form="bulk-delete-form" class="row-checkbox w-4 h-4 rounded border-gray-300 text-red-600 focus:ring-red-500" onchange="updateBulkBtn()">
                     </td>

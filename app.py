@@ -787,7 +787,12 @@ def registrace():
         if not request.form.get('gdpr_consent'):
             flash('Souhlas se zpracováním osobních údajů je povinný.', 'error')
             return render_template('registrace.html')
-        db = get_db()
+        existing = db.execute(
+            'SELECT id FROM registrace WHERE email = ?', (email,)
+        ).fetchone()
+        if existing:
+            flash('Tato e-mailová adresa je již registrována. Pokud máte dotazy, kontaktujte nás.', 'error')
+            return render_template('registrace.html')
         db.execute(
             'INSERT INTO registrace (name, email, phone, note) VALUES (?, ?, ?, ?)',
             (name, email, phone, note)
@@ -1055,7 +1060,7 @@ def admin_dashboard():
     stats = {
         'etapy': db.execute('SELECT COUNT(*) c FROM etapy').fetchone()['c'],
         'aktuality': db.execute('SELECT COUNT(*) c FROM aktuality').fetchone()['c'],
-        'registrace': db.execute('SELECT COUNT(*) c FROM registrace').fetchone()['c'],
+        'registrace': db.execute("SELECT COUNT(*) c FROM registrace WHERE status = 'approved'").fetchone()['c'],
         'ubytovani': db.execute('SELECT COUNT(*) c FROM ubytovani').fetchone()['c'],
     }
     return render_template('admin/dashboard.html', stats=stats)
@@ -1309,7 +1314,12 @@ def admin_registrace():
         conditions.append("status = ?")
         params.append(status_filter)
     where = 'WHERE ' + ' AND '.join(conditions) if conditions else ''
-    rows = db.execute(f'SELECT * FROM registrace {where} ORDER BY created_at DESC', params).fetchall()
+    rows = db.execute(
+        f"SELECT * FROM registrace {where} "
+        "ORDER BY CASE status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 WHEN 'denied' THEN 2 ELSE 3 END, "
+        "created_at DESC",
+        params
+    ).fetchall()
     counts = {
         'all': db.execute('SELECT COUNT(*) c FROM registrace').fetchone()['c'],
         'pending': db.execute("SELECT COUNT(*) c FROM registrace WHERE status = 'pending'").fetchone()['c'],
@@ -1491,6 +1501,68 @@ def admin_registrace_send_payment(id):
     send_email(reg['email'], subject, html, sender_username=session.get('admin_username'))
 
     flash(f'Platební QR kód odeslán na {reg["email"]} (VS: {vs}).', 'success')
+    return redirect(url_for('admin_registrace'))
+
+
+@app.route('/admin/registrace/bulk-send-payment', methods=['POST'])
+@login_required
+def admin_registrace_bulk_send_payment():
+    db = get_db()
+    regs = db.execute(
+        "SELECT * FROM registrace WHERE status = 'approved' AND email != '' "
+        "AND email IS NOT NULL AND (payment_status = 'none' OR payment_status IS NULL)"
+    ).fetchall()
+
+    if not regs:
+        flash('Žádné schválené registrace k odeslání QR.', 'info')
+        return redirect(url_for('admin_registrace'))
+
+    settings = get_settings()
+    amount = float(settings.get('payment_amount', '0'))
+    iban = settings.get('bank_iban', '')
+    bank_account = settings.get('bank_account', '')
+
+    if not iban or not amount:
+        flash('Nejsou nastaveny platební údaje (IBAN, částka). Zkontrolujte nastavení.', 'error')
+        return redirect(url_for('admin_registrace'))
+
+    event_name = settings.get('event_name', 'Cykloexpedice')
+    event_year = settings.get('event_year', '')
+    sent_count = 0
+
+    for reg in regs:
+        vs = reg['variable_symbol'] or reg['id']
+        name_parts = reg['name'].strip().split()
+        payment_note = 'WACHAU_' + '_'.join(name_parts)
+
+        qr_b64 = generate_payment_qr(iban, amount, vs, payment_note)
+
+        db.execute(
+            "UPDATE registrace SET variable_symbol = ?, payment_status = 'pending', "
+            "payment_amount = ?, qr_sent_at = ? WHERE id = ?",
+            (vs, amount, datetime.now(), reg['id'])
+        )
+
+        qr_html = f'<p style="text-align: center; margin: 25px 0;"><img src="data:image/png;base64,{qr_b64}" alt="QR platba" style="width: 250px; height: 250px;"></p>'
+        tpl_vars = {
+            'name': reg['name'],
+            'event_name': event_name,
+            'event_year': event_year,
+            'bank_account': bank_account,
+            'amount': f'{amount:.0f}',
+            'vs': str(vs),
+            'payment_note': payment_note,
+            'qr_code': qr_html,
+            'contact_name_1': settings.get('contact_name_1', ''),
+            'contact_name_2': settings.get('contact_name_2', ''),
+            'contact_email': settings.get('contact_email', ''),
+        }
+        subject, html = render_email_template('email_payment', tpl_vars, settings)
+        send_email(reg['email'], subject, html, sender_username=session.get('admin_username'))
+        sent_count += 1
+
+    db.commit()
+    flash(f'Platební QR kód odeslán {sent_count} účastníkům.', 'success')
     return redirect(url_for('admin_registrace'))
 
 
