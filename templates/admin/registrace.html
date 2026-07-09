@@ -100,7 +100,7 @@
                 </tr>
                 {% endif %}
                 {% endif %}
-                <tr class="hover:bg-gray-50">
+                <tr class="hover:bg-gray-50 cursor-pointer" onclick="toggleRowCheckbox(event, this)">
                     <td class="px-4 py-3">
                         <input type="checkbox" name="ids" value="{{ r.id }}" form="bulk-delete-form" class="row-checkbox w-4 h-4 rounded border-gray-300 text-red-600 focus:ring-red-500" onchange="updateBulkBtn()">
                     </td>
