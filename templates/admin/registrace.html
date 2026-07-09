@@ -88,6 +88,18 @@
             </thead>
             <tbody class="divide-y divide-gray-100">
                 {% for r in registrace %}
+                {% if not status_filter %}
+                {% set prev_status = registrace[loop.index0 - 1].status if loop.index0 > 0 else None %}
+                {% if prev_status != r.status and not loop.first %}
+                <tr>
+                    <td colspan="10" class="px-4 py-2 bg-gray-100">
+                        <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                            {% if r.status == 'approved' %}Schválené{% elif r.status == 'denied' %}Zamítnuté{% endif %}
+                        </span>
+                    </td>
+                </tr>
+                {% endif %}
+                {% endif %}
                 <tr class="hover:bg-gray-50">
                     <td class="px-4 py-3">
                         <input type="checkbox" name="ids" value="{{ r.id }}" form="bulk-delete-form" class="row-checkbox w-4 h-4 rounded border-gray-300 text-red-600 focus:ring-red-500" onchange="updateBulkBtn()">

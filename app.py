@@ -1314,7 +1314,12 @@ def admin_registrace():
         conditions.append("status = ?")
         params.append(status_filter)
     where = 'WHERE ' + ' AND '.join(conditions) if conditions else ''
-    rows = db.execute(f'SELECT * FROM registrace {where} ORDER BY created_at DESC', params).fetchall()
+    rows = db.execute(
+        f"SELECT * FROM registrace {where} "
+        "ORDER BY CASE status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 WHEN 'denied' THEN 2 ELSE 3 END, "
+        "created_at DESC",
+        params
+    ).fetchall()
     counts = {
         'all': db.execute('SELECT COUNT(*) c FROM registrace').fetchone()['c'],
         'pending': db.execute("SELECT COUNT(*) c FROM registrace WHERE status = 'pending'").fetchone()['c'],
