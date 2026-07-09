@@ -24,7 +24,7 @@
             {% for a in aktuality %}
             <tr class="hover:bg-gray-50">
                 <td class="px-4 py-3 font-medium">{{ a.title }}</td>
-                <td class="px-4 py-3 text-gray-500 text-sm">{{ a.created_at }}</td>
+                <td class="px-4 py-3 text-gray-500 text-sm">{{ a.created_at|prague_time }}</td>
                 <td class="px-4 py-3">
                     {% if a.published %}
                     <span class="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full font-medium">Publikováno</span>

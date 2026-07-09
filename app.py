@@ -9,9 +9,11 @@ import ssl
 
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from functools import wraps
+from html import escape as html_escape
 from threading import Thread
+from zoneinfo import ZoneInfo
 
 import psycopg2
 import qrcode
@@ -57,6 +59,16 @@ def check_csrf():
 ALLOWED_UPLOAD_EXTENSIONS = {'jpg', 'jpeg', 'png', 'gif', 'webp', 'gpx', 'zip', 'pdf'}
 MAX_CAPACITY = 30
 ADMIN_NOTIFICATION_EMAILS = ['adam.prikryl7@gmail.com', 'michal.prikryl@atlas.cz']
+PRAGUE_TZ = ZoneInfo('Europe/Prague')
+
+
+@app.template_filter('prague_time')
+def prague_time_filter(dt, fmt='%d.%m.%Y %H:%M:%S'):
+    if dt is None:
+        return '–'
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(PRAGUE_TZ).strftime(fmt)
 
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
 FIO_API_TOKEN = os.environ.get('FIO_API_TOKEN', '')
@@ -373,6 +385,7 @@ def send_email(to_email, subject, html_body, sender_username=None):
             break
 
     if not smtp:
+        print(f'[EMAIL] No SMTP configured, skipping email to {to_email}: {subject}')
         return
 
     def _send():
@@ -815,35 +828,42 @@ def registrace():
             send_email(email, subj, html)
 
         # Notify admins about new registration
-        pending_count = db.execute("SELECT COUNT(*) c FROM registrace WHERE status = 'pending'").fetchone()['c']
-        event_name = settings.get('event_name', 'Cykloexpedice')
-        event_year = settings.get('event_year', '')
-        notif_subject = f'Nová přihláška – {event_name} {event_year}'
-        notif_body = (
-            '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
-            '<tr><td align="center" style="padding-bottom:24px;">'
-            '<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>'
-            '<td style="background-color:#fbb01f;padding:8px 24px;font-family:Arial,sans-serif;font-size:13px;font-weight:700;color:#1c1c1b;text-transform:uppercase;letter-spacing:2px;">NOVÁ PŘIHLÁŠKA</td>'
-            '</tr></table></td></tr>'
-            '<tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:26px;color:#374151;">'
-            f'<p style="margin:0 0 20px;">Na expedici <strong>{event_name} {event_year}</strong> se přihlásil nový účastník.</p>'
-            '</td></tr>'
-            '<tr><td style="padding:0 0 20px;">'
-            '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e5e7eb;">'
-            '<tr><td bgcolor="#f9fafb" style="background-color:#f9fafb;padding:20px;">'
-            '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
-            f'<tr><td style="padding:8px 0;color:#6b7280;font-family:Arial,Helvetica,sans-serif;font-size:15px;">Jméno:</td><td style="padding:8px 0;font-weight:700;font-family:Arial,Helvetica,sans-serif;font-size:15px;">{name}</td></tr>'
-            f'<tr><td style="padding:8px 0;color:#6b7280;font-family:Arial,Helvetica,sans-serif;font-size:15px;">E-mail:</td><td style="padding:8px 0;font-weight:700;font-family:Arial,Helvetica,sans-serif;font-size:15px;">{email}</td></tr>'
-            f'<tr><td style="padding:8px 0;color:#6b7280;font-family:Arial,Helvetica,sans-serif;font-size:15px;">Telefon:</td><td style="padding:8px 0;font-weight:700;font-family:Arial,Helvetica,sans-serif;font-size:15px;">{phone or "–"}</td></tr>'
-            f'<tr><td style="padding:8px 0;color:#6b7280;font-family:Arial,Helvetica,sans-serif;font-size:15px;">Poznámka:</td><td style="padding:8px 0;font-weight:700;font-family:Arial,Helvetica,sans-serif;font-size:15px;">{note or "–"}</td></tr>'
-            '</table></td></tr></table></td></tr>'
-            '<tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#6b7280;">'
-            f'<p style="margin:0;">Celkem čeká na schválení: <strong>{pending_count}</strong></p>'
-            '</td></tr></table>'
-        )
-        notif_html = render_email_layout(notif_body, settings)
-        for admin_email in ADMIN_NOTIFICATION_EMAILS:
-            send_email(admin_email, notif_subject, notif_html)
+        try:
+            pending_count = db.execute("SELECT COUNT(*) c FROM registrace WHERE status = 'pending'").fetchone()['c']
+            event_name = settings.get('event_name', 'Cykloexpedice')
+            event_year = settings.get('event_year', '')
+            notif_subject = f'Nová přihláška – {event_name} {event_year}'
+            safe_name = html_escape(name)
+            safe_email = html_escape(email)
+            safe_phone = html_escape(phone) if phone else '–'
+            safe_note = html_escape(note) if note else '–'
+            notif_body = (
+                '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
+                '<tr><td align="center" style="padding-bottom:24px;">'
+                '<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>'
+                '<td style="background-color:#fbb01f;padding:8px 24px;font-family:Arial,sans-serif;font-size:13px;font-weight:700;color:#1c1c1b;text-transform:uppercase;letter-spacing:2px;">NOVÁ PŘIHLÁŠKA</td>'
+                '</tr></table></td></tr>'
+                '<tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:26px;color:#374151;">'
+                f'<p style="margin:0 0 20px;">Na expedici <strong>{html_escape(event_name)} {html_escape(event_year)}</strong> se přihlásil nový účastník.</p>'
+                '</td></tr>'
+                '<tr><td style="padding:0 0 20px;">'
+                '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e5e7eb;">'
+                '<tr><td bgcolor="#f9fafb" style="background-color:#f9fafb;padding:20px;">'
+                '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
+                f'<tr><td style="padding:8px 0;color:#6b7280;font-family:Arial,Helvetica,sans-serif;font-size:15px;">Jméno:</td><td style="padding:8px 0;font-weight:700;font-family:Arial,Helvetica,sans-serif;font-size:15px;">{safe_name}</td></tr>'
+                f'<tr><td style="padding:8px 0;color:#6b7280;font-family:Arial,Helvetica,sans-serif;font-size:15px;">E-mail:</td><td style="padding:8px 0;font-weight:700;font-family:Arial,Helvetica,sans-serif;font-size:15px;">{safe_email}</td></tr>'
+                f'<tr><td style="padding:8px 0;color:#6b7280;font-family:Arial,Helvetica,sans-serif;font-size:15px;">Telefon:</td><td style="padding:8px 0;font-weight:700;font-family:Arial,Helvetica,sans-serif;font-size:15px;">{safe_phone}</td></tr>'
+                f'<tr><td style="padding:8px 0;color:#6b7280;font-family:Arial,Helvetica,sans-serif;font-size:15px;">Poznámka:</td><td style="padding:8px 0;font-weight:700;font-family:Arial,Helvetica,sans-serif;font-size:15px;">{safe_note}</td></tr>'
+                '</table></td></tr></table></td></tr>'
+                '<tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#6b7280;">'
+                f'<p style="margin:0;">Celkem čeká na schválení: <strong>{pending_count}</strong></p>'
+                '</td></tr></table>'
+            )
+            notif_html = render_email_layout(notif_body, settings)
+            for admin_email in ADMIN_NOTIFICATION_EMAILS:
+                send_email(admin_email, notif_subject, notif_html)
+        except Exception as e:
+            print(f'[NOTIFICATION ERROR] {e}')
 
         flash('Děkujeme za přihlášku! Ozveme se ti.', 'success')
         return redirect(url_for('registrace'))

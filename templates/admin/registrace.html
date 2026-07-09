@@ -134,12 +134,12 @@
                         {% if r.payment_status == 'paid' %}
                         <span class="px-2.5 py-1 bg-green-100 text-green-700 text-xs rounded-full font-semibold">Zaplaceno</span>
                         {% elif r.payment_status == 'pending' %}
-                        <span class="px-2.5 py-1 bg-yellow-100 text-yellow-700 text-xs rounded-full font-semibold" title="QR odesláno: {{ r.qr_sent_at }}">Čeká na platbu</span>
+                        <span class="px-2.5 py-1 bg-yellow-100 text-yellow-700 text-xs rounded-full font-semibold" title="QR odesláno: {{ r.qr_sent_at|prague_time }}">Čeká na platbu</span>
                         {% else %}
                         <span class="px-2.5 py-1 bg-gray-100 text-gray-500 text-xs rounded-full">–</span>
                         {% endif %}
                     </td>
-                    <td class="px-4 py-3 text-gray-500 text-sm">{{ r.created_at.strftime('%d.%m.%Y %H:%M:%S') if r.created_at else '–' }}</td>
+                    <td class="px-4 py-3 text-gray-500 text-sm">{{ r.created_at|prague_time }}</td>
                     <td class="px-4 py-3 text-right whitespace-nowrap">
                         <div class="flex items-center justify-end gap-2">
                             {% if r.status == 'pending' %}

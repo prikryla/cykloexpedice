@@ -1,5 +1,6 @@
 """Comprehensive tests for the Cykloexpedice Flask application."""
 import json
+from datetime import datetime, timezone
 from unittest.mock import patch, MagicMock
 import bcrypt
 import pytest
@@ -2149,3 +2150,61 @@ class TestWaveDividers:
         r = client.get('/propozice')
         html = r.data.decode()
         assert html.count('viewBox="0 0 1440 80"') >= 1
+
+
+class TestPragueTimeFilter:
+    def test_naive_utc_to_prague_summer(self, app):
+        from app import prague_time_filter
+        dt = datetime(2026, 7, 9, 12, 59, 54)
+        result = prague_time_filter(dt)
+        assert result == '09.07.2026 14:59:54'
+
+    def test_naive_utc_to_prague_winter(self, app):
+        from app import prague_time_filter
+        dt = datetime(2026, 1, 15, 10, 0, 0)
+        result = prague_time_filter(dt)
+        assert result == '15.01.2026 11:00:00'
+
+    def test_aware_utc(self, app):
+        from app import prague_time_filter
+        dt = datetime(2026, 7, 9, 12, 0, 0, tzinfo=timezone.utc)
+        result = prague_time_filter(dt)
+        assert result == '09.07.2026 14:00:00'
+
+    def test_none_returns_dash(self, app):
+        from app import prague_time_filter
+        assert prague_time_filter(None) == '–'
+
+    def test_custom_format(self, app):
+        from app import prague_time_filter
+        dt = datetime(2026, 7, 9, 12, 0, 0)
+        result = prague_time_filter(dt, '%d. %m. %Y %H:%M:%S')
+        assert result == '09. 07. 2026 14:00:00'
+
+    def test_registrace_shows_prague_time(self, app, admin_client):
+        import app as flask_app
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO registrace (name, email, phone, note) VALUES (?, ?, ?, ?)",
+                ('Test User', 'test@test.cz', '', ''))
+            db.commit()
+        r = admin_client.get('/admin/registrace')
+        html = r.data.decode()
+        assert 'prague_time' not in html
+
+
+class TestNotificationHtmlEscaping:
+    def test_xss_in_name_is_escaped(self, client):
+        with patch('app.send_email') as mock_email:
+            client.post('/registrace', data={
+                'name': '<script>alert(1)</script>',
+                'email': 'xss@test.cz',
+                'phone': '',
+                'note': '',
+                'gdpr_consent': 'on',
+            }, follow_redirects=True)
+            admin_call = mock_email.call_args_list[1]
+            html_body = admin_call[0][2]
+            assert '<script>' not in html_body
+            assert '&lt;script&gt;' in html_body
