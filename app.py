@@ -57,7 +57,6 @@ def check_csrf():
             abort(403)
 
 ALLOWED_UPLOAD_EXTENSIONS = {'jpg', 'jpeg', 'png', 'gif', 'webp', 'gpx', 'zip', 'pdf'}
-MAX_CAPACITY = 30
 ADMIN_NOTIFICATION_EMAILS = ['adam.prikryl7@gmail.com', 'michal.prikryl@atlas.cz']
 PRAGUE_TZ = ZoneInfo('Europe/Prague')
 
@@ -239,6 +238,7 @@ def init_db():
         'fotky_enabled': '1',
         'maintenance_enabled': '1',
         'maintenance_until': '2026-06-01T00:00:01',
+        'max_capacity': '30',
         'payment_amount': '3500',
         'bank_account': '2703473997/2010',
         'bank_iban': 'CZ1620100000002703473997',
@@ -646,7 +646,11 @@ def inject_globals():
         approved = db.execute("SELECT COUNT(*) c FROM registrace WHERE status = 'approved'").fetchone()['c']
     except Exception:
         approved = 0
-    registration_full = approved >= MAX_CAPACITY
+    try:
+        max_capacity = int(settings.get('max_capacity', '30'))
+    except (ValueError, TypeError):
+        max_capacity = 30
+    registration_full = approved >= max_capacity
     return dict(etapy_nav=etapy, settings=settings, now=datetime.now(),
                 maintenance_active=maintenance_active, registration_full=registration_full)
 
@@ -767,7 +771,12 @@ def registrace():
     if request.method == 'POST':
         db = get_db()
         approved = db.execute("SELECT COUNT(*) c FROM registrace WHERE status = 'approved'").fetchone()['c']
-        if approved >= MAX_CAPACITY:
+        settings = get_settings()
+        try:
+            max_capacity = int(settings.get('max_capacity', '30'))
+        except (ValueError, TypeError):
+            max_capacity = 30
+        if approved >= max_capacity:
             flash('Kapacita expedice je naplněna.', 'error')
             return redirect(url_for('registrace'))
         name = request.form.get('name', '').strip()
@@ -1735,7 +1744,7 @@ def admin_settings():
         keys = ['event_name', 'event_year', 'event_days', 'event_km',
                 'event_elevation', 'event_dates', 'contact_name_1',
                 'contact_name_2', 'contact_email', 'photos_link', 'photos_text',
-                'payment_amount', 'bank_account', 'bank_iban']
+                'max_capacity', 'payment_amount', 'bank_account', 'bank_iban']
         for key in keys:
             val = request.form.get(key, '')
             db.execute('INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)', (key, val))

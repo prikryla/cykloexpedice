@@ -1735,7 +1735,7 @@ class TestCheckFioPaymentsEdgeCases:
 
 
 class TestRegistrationCapacity:
-    """Tests for the MAX_CAPACITY=30 registration limit."""
+    """Tests for the configurable max_capacity registration limit."""
 
     def _fill_approved(self, app, count):
         """Insert `count` approved registrations into the database."""
@@ -1746,6 +1746,13 @@ class TestRegistrationCapacity:
                 db.execute(
                     "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
                     (f'User {i}', f'user{i}@test.cz'))
+            db.commit()
+
+    def _set_capacity(self, app, value):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute("INSERT OR REPLACE INTO site_settings (key, value) VALUES ('max_capacity', ?)", (str(value),))
             db.commit()
 
     def test_form_visible_under_capacity(self, app, client):
@@ -1852,6 +1859,51 @@ class TestRegistrationCapacity:
         html = r.data.decode()
         assert 'Odeslat přihlášku' in html
         assert 'KAPACITA NAPLNĚNA' not in html
+
+    def test_custom_capacity_from_settings(self, app, client):
+        self._set_capacity(app, 5)
+        self._fill_approved(app, 5)
+        r = client.get('/registrace')
+        html = r.data.decode()
+        assert 'KAPACITA NAPLNĚNA' in html
+
+    def test_custom_capacity_allows_under_limit(self, app, client):
+        self._set_capacity(app, 5)
+        self._fill_approved(app, 4)
+        r = client.get('/registrace')
+        html = r.data.decode()
+        assert 'Odeslat přihlášku' in html
+
+    def test_custom_capacity_blocks_post(self, app, client):
+        self._set_capacity(app, 5)
+        self._fill_approved(app, 5)
+        with patch('app.send_email'):
+            r = client.post('/registrace', data={
+                'name': 'Over Limit', 'email': 'over@test.cz', 'gdpr_consent': 'on',
+            }, follow_redirects=True)
+        assert 'naplněna' in r.data.decode().lower()
+
+    def test_admin_settings_shows_capacity_field(self, admin_client):
+        r = admin_client.get('/admin/nastaveni')
+        html = r.data.decode()
+        assert 'max_capacity' in html
+        assert 'Maximální počet účastníků' in html
+
+    def test_admin_settings_saves_capacity(self, app, admin_client):
+        admin_client.post('/admin/nastaveni', data={
+            'event_name': 'Test', 'event_year': '2026',
+            'event_days': '3', 'event_km': '100',
+            'event_elevation': '500', 'event_dates': 'Test',
+            'contact_name_1': '', 'contact_name_2': '',
+            'contact_email': '', 'photos_link': '', 'photos_text': '',
+            'max_capacity': '15',
+            'payment_amount': '3500', 'bank_account': '', 'bank_iban': '',
+        }, follow_redirects=True)
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            row = db.execute("SELECT value FROM site_settings WHERE key = 'max_capacity'").fetchone()
+            assert row['value'] == '15'
 
 
 class TestRegistrationEdgeCases:
