@@ -325,7 +325,9 @@
             <!-- Bottom bar -->
             <div class="pt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
                 <p class="text-gray-500 text-xs">&copy; 2014&ndash;{{ now.year }} Cykloexpedice. Všechna práva vyhrazena.</p>
+                {% if not registration_full %}
                 <a href="{{ url_for('registrace') }}" class="text-xs font-semibold text-gold-500 hover:text-gold-400 transition uppercase tracking-wider">Přihlásit se na expedici &rarr;</a>
+                {% endif %}
             </div>
         </div>
     </footer>
