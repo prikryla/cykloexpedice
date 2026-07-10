@@ -3,23 +3,23 @@
 {% block main_class %}{% endblock %}
 
 {% block content %}
-<div class="flex items-center justify-between mb-6">
+<div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6">
     <h1 class="text-2xl font-bold">Registrace</h1>
-    <div class="flex items-center gap-3">
+    <div class="flex flex-wrap items-center gap-2">
         <button type="button" id="bulk-delete-btn" disabled
-                class="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                class="inline-flex items-center gap-2 px-3 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
                 onclick="openBulkDeleteModal()">
             <i class="bi bi-trash3"></i> <span id="bulk-delete-label">Smazat vybrané</span>
         </button>
         <form method="POST" action="{{ url_for('admin_registrace_bulk_send_payment') }}" onsubmit="return confirm('Odeslat platební QR všem schváleným registracím, které ještě nemají QR?');">
             <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition">
+            <button type="submit" class="inline-flex items-center gap-2 px-3 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition">
                 <i class="bi bi-qr-code"></i> Odeslat QR všem
             </button>
         </form>
         <form method="POST" action="{{ url_for('admin_check_payments') }}">
-                        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="inline-flex items-center gap-2 px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition">
                 <i class="bi bi-arrow-repeat"></i> Zkontrolovat platby
             </button>
         </form>
@@ -34,7 +34,7 @@
     </a>
     <a href="{{ url_for('admin_registrace', status='pending') }}"
        class="px-4 py-2 rounded-lg text-sm font-medium {% if status_filter == 'pending' %}bg-amber-500 text-white{% else %}bg-amber-50 text-amber-700 hover:bg-amber-100{% endif %}">
-        Čeká na schválení ({{ counts.pending }})
+        Čeká ({{ counts.pending }})
     </a>
     <a href="{{ url_for('admin_registrace', status='approved') }}"
        class="px-4 py-2 rounded-lg text-sm font-medium {% if status_filter == 'approved' %}bg-green-600 text-white{% else %}bg-green-50 text-green-700 hover:bg-green-100{% endif %}">
@@ -51,13 +51,13 @@
     {% if status_filter %}<input type="hidden" name="status" value="{{ status_filter }}">{% endif %}
     <div class="flex gap-2">
         <input type="text" name="q" value="{{ query }}" placeholder="Hledat podle jména, emailu, telefonu..."
-               class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500">
-        <button type="submit" class="px-4 py-2 bg-amber-500 text-gray-900 font-bold rounded-lg hover:bg-amber-400">
-            <i class="bi bi-search"></i> Hledat
+               class="flex-1 min-w-0 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500">
+        <button type="submit" class="px-4 py-2 bg-amber-500 text-gray-900 font-bold rounded-lg hover:bg-amber-400 whitespace-nowrap">
+            <i class="bi bi-search"></i><span class="hidden sm:inline"> Hledat</span>
         </button>
         {% if query %}
-        <a href="{{ url_for('admin_registrace', status=status_filter) }}" class="px-4 py-2 bg-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-300">
-            Zrušit filtr
+        <a href="{{ url_for('admin_registrace', status=status_filter) }}" class="px-4 py-2 bg-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-300 whitespace-nowrap">
+            <i class="bi bi-x-lg sm:hidden"></i><span class="hidden sm:inline">Zrušit filtr</span>
         </a>
         {% endif %}
     </div>
@@ -67,7 +67,107 @@
 <form id="bulk-delete-form" method="POST" action="{{ url_for('admin_registrace_bulk_delete') }}">
     <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
 </form>
-<div class="bg-white rounded-xl shadow overflow-hidden">
+
+<!-- ═══ MOBILE: Card layout ═══ -->
+<div class="lg:hidden space-y-3">
+    {% for r in registrace %}
+    {% if not status_filter %}
+    {% set prev_status = registrace[loop.index0 - 1].status if loop.index0 > 0 else None %}
+    {% if prev_status != r.status and not loop.first %}
+    <div class="px-2 pt-2">
+        <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+            {% if r.status == 'approved' %}Schválené{% elif r.status == 'denied' %}Zamítnuté{% endif %}
+        </span>
+    </div>
+    {% endif %}
+    {% endif %}
+    <div class="bg-white rounded-xl shadow p-4" onclick="toggleCardCheckbox(event, this)">
+        <!-- Row 1: checkbox + status + name -->
+        <div class="flex items-center gap-3 mb-3">
+            <input type="checkbox" name="ids" value="{{ r.id }}" form="bulk-delete-form" class="row-checkbox w-5 h-5 rounded border-gray-300 text-red-600 focus:ring-red-500 flex-shrink-0" onchange="updateBulkBtn()">
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                    {% if r.status == 'approved' %}
+                    <span class="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full font-semibold">Schváleno</span>
+                    {% elif r.status == 'denied' %}
+                    <span class="px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full font-semibold">Zamítnuto</span>
+                    {% else %}
+                    <span class="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded-full font-semibold">Čeká</span>
+                    {% endif %}
+                    <span class="font-semibold text-gray-900 truncate">{{ r.name }}</span>
+                    <a href="{{ url_for('admin_registrace_edit', id=r.id) }}" class="text-gray-400 hover:text-blue-600 transition flex-shrink-0" title="Upravit jméno">
+                        <i class="bi bi-pencil-square text-xs"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+        <!-- Row 2: contact info -->
+        <div class="grid grid-cols-1 gap-1 text-sm text-gray-600 mb-2 pl-8">
+            {% if r.email %}
+            <div class="truncate"><i class="bi bi-envelope text-gray-400 mr-1.5"></i><a href="mailto:{{ r.email }}" class="text-blue-600 hover:underline">{{ r.email }}</a></div>
+            {% endif %}
+            {% if r.phone %}
+            <div><i class="bi bi-telephone text-gray-400 mr-1.5"></i>{{ r.phone }}</div>
+            {% endif %}
+        </div>
+        <!-- Row 3: note (if any) -->
+        {% if r.note %}
+        <div class="text-sm text-gray-500 mb-2 pl-8 break-words">
+            <i class="bi bi-chat-left-text text-gray-400 mr-1.5"></i>{{ r.note }}
+        </div>
+        {% endif %}
+        {% if r.admin_note %}
+        <div class="text-xs text-red-500 mb-2 pl-8 break-words">
+            <i class="bi bi-chat-left-text mr-1"></i>{{ r.admin_note }}
+        </div>
+        {% endif %}
+        <!-- Row 4: meta info -->
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-400 pl-8 mb-3">
+            {% if r.variable_symbol %}<span class="font-mono">VS {{ r.variable_symbol }}</span>{% endif %}
+            {% if r.payment_status == 'paid' %}
+            <span class="px-2 py-0.5 bg-green-100 text-green-700 rounded-full font-semibold">Zaplaceno</span>
+            {% elif r.payment_status == 'pending' %}
+            <span class="px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded-full font-semibold">Čeká na platbu</span>
+            {% endif %}
+            <span>{{ r.created_at|prague_time }}</span>
+        </div>
+        <!-- Row 5: actions -->
+        <div class="flex flex-wrap items-center gap-2 pl-8">
+            {% if r.status == 'pending' %}
+            <form method="POST" action="{{ url_for('admin_registrace_approve', id=r.id) }}" class="inline">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                <button class="inline-flex items-center gap-1 px-3 py-1.5 bg-green-50 text-green-700 text-sm font-medium rounded-lg hover:bg-green-100 transition">
+                    <i class="bi bi-check-circle"></i> Schválit
+                </button>
+            </form>
+            <a href="{{ url_for('admin_registrace_deny', id=r.id) }}"
+               class="inline-flex items-center gap-1 px-3 py-1.5 bg-amber-50 text-amber-700 text-sm font-medium rounded-lg hover:bg-amber-100 transition">
+                <i class="bi bi-x-circle"></i> Zamítnout
+            </a>
+            {% endif %}
+            {% if r.status == 'approved' and r.payment_status != 'paid' %}
+            <form method="POST" action="{{ url_for('admin_registrace_send_payment', id=r.id) }}" class="inline">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                <button class="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 text-sm font-medium rounded-lg hover:bg-blue-100 transition">
+                    <i class="bi bi-qr-code"></i> {% if r.payment_status == 'pending' %}Znovu QR{% else %}Odeslat QR{% endif %}
+                </button>
+            </form>
+            {% endif %}
+            <form method="POST" action="{{ url_for('admin_registrace_delete', id=r.id) }}" class="inline">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                <button type="button"
+                        class="inline-flex items-center gap-1 px-2.5 py-1.5 bg-red-50 text-red-700 text-sm rounded-lg hover:bg-red-100 transition"
+                        onclick="openDeleteModal(this.closest('form'), &quot;Opravdu chcete smazat registraci od {{ r.name|e }}?&quot;)">
+                    <i class="bi bi-trash3"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- ═══ DESKTOP: Table layout ═══ -->
+<div class="hidden lg:block bg-white rounded-xl shadow overflow-hidden">
     <div class="overflow-x-auto">
         <table class="w-full">
             <thead class="bg-gray-50 text-left text-sm text-gray-500 uppercase">
@@ -189,6 +289,11 @@
 function toggleRowCheckbox(event, row) {
     if (event.target.closest('a, button, input, form')) return;
     var cb = row.querySelector('.row-checkbox');
+    if (cb) { cb.checked = !cb.checked; updateBulkBtn(); }
+}
+function toggleCardCheckbox(event, card) {
+    if (event.target.closest('a, button, input, form')) return;
+    var cb = card.querySelector('.row-checkbox');
     if (cb) { cb.checked = !cb.checked; updateBulkBtn(); }
 }
 function toggleAll(master) {
