@@ -23,6 +23,19 @@ jobs:
 
       - run: pytest test_app.py -v
 
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - run: pip install ruff
+
+      - run: ruff check app.py test_app.py
+
   version-check:
     runs-on: ubuntu-latest
     steps:

@@ -1,10 +1,9 @@
 """Comprehensive tests for the Cykloexpedice Flask application."""
-import json
 import time as _time_module
 from datetime import datetime, timezone
 from unittest.mock import patch, MagicMock
 import bcrypt
-import pytest
+import pytest  # noqa: F401
 from flask.testing import FlaskClient
 
 
@@ -766,13 +765,12 @@ class TestPayments:
     def test_payment_note_format(self, admin_client, app):
         """Verify payment note is WACHAU_firstname_lastname."""
         reg_id = self._create_approved_registration(admin_client, app)
-        with patch('app.send_email') as mock_email, \
+        with patch('app.send_email'), \
              patch('app.generate_payment_qr') as mock_qr:
             mock_qr.return_value = 'fakebase64'
             admin_client.post(f'/admin/registrace/{reg_id}/send-payment')
-            # Check the QR was called with correct message
             call_args = mock_qr.call_args
-            assert call_args[0][3] == 'WACHAU_Jan_Novák'  # message argument
+            assert call_args[0][3] == 'WACHAU_Jan_Novák'
 
 
 class TestBulkSendPayment:
@@ -1545,7 +1543,7 @@ class TestCSRFProtection:
     def test_csrf_token_generated_on_form_page(self, app):
         app.test_client_class = FlaskClient
         raw_client = app.test_client()
-        r = raw_client.get('/registrace')
+        raw_client.get('/registrace')
         with raw_client.session_transaction() as sess:
             assert '_csrf_token' in sess
             assert len(sess['_csrf_token']) == 64
@@ -1725,7 +1723,6 @@ class TestPublicRouteEdgeCases:
             db.commit()
 
         r = client.get('/etapa/2')
-        html = r.data.decode()
         assert r.status_code == 200
 
     def test_aktuality_only_shows_published(self, app, client):
@@ -1835,7 +1832,7 @@ class TestAdminCRUDEdgeCases:
 
         with app.app_context():
             db = flask_app.get_db()
-            row = db.execute(f'SELECT title FROM aktuality WHERE id = ?', (aid,)).fetchone()
+            row = db.execute('SELECT title FROM aktuality WHERE id = ?', (aid,)).fetchone()
             assert row['title'] == 'Edited Title'
 
     def test_edit_nonexistent_aktualita_returns_404(self, admin_client):
