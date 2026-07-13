@@ -36,12 +36,18 @@ document.addEventListener('DOMContentLoaded', function() {
             <label class="block text-sm font-medium text-gray-700 mb-1">Obsah</label>
             <textarea name="content" id="content-editor">{{ item.content if item else '' }}</textarea>
         </div>
-        <div>
+        <div class="space-y-3">
             <label class="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" name="published" value="1"
                        {% if not item or item.published %}checked{% endif %}
                        class="w-5 h-5 rounded border-gray-300 text-amber-500 focus:ring-amber-500">
                 <span class="text-sm font-medium text-gray-700">Publikovat</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" name="notify_participants" value="1"
+                       class="w-5 h-5 rounded border-gray-300 text-blue-500 focus:ring-blue-500">
+                <span class="text-sm font-medium text-gray-700">Odeslat emailem účastníkům</span>
+                <span class="text-xs text-gray-400">(odešle oznámení všem schváleným účastníkům)</span>
             </label>
         </div>
     </div>

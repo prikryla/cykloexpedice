@@ -9,6 +9,7 @@ import ssl
 
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+import time as _time
 from datetime import datetime, date, timezone
 from functools import wraps
 from html import escape as html_escape
@@ -412,6 +413,17 @@ def send_email(to_email, subject, html_body, sender_username=None):
             print(f'[EMAIL ERROR] {e}')
 
     Thread(target=_send, daemon=True).start()
+
+
+def send_bulk_notifications(recipients, subject, html_body):
+    """Send email to each recipient individually with a 3s delay between sends."""
+    def _run():
+        for i, email in enumerate(recipients):
+            if i > 0:
+                _time.sleep(3)
+            send_email(email, subject, html_body)
+        print(f'[EMAIL] Bulk notification dispatched to {len(recipients)} recipients')
+    Thread(target=_run, daemon=True).start()
 
 
 # ── Email template helpers ────────────────────────────────────
@@ -1347,6 +1359,7 @@ def _save_aktualita(id):
     title = request.form.get('title', '')
     content = request.form.get('content', '')
     published = 1 if request.form.get('published') else 0
+    notify = request.form.get('notify_participants')
     if id:
         db.execute('UPDATE aktuality SET title=?, content=?, published=? WHERE id=?',
                    (title, content, published, id))
@@ -1354,7 +1367,46 @@ def _save_aktualita(id):
         db.execute('INSERT INTO aktuality (title, content, published) VALUES (?,?,?)',
                    (title, content, published))
     db.commit()
-    flash('Aktualita uložena.', 'success')
+
+    if notify and published:
+        try:
+            settings = get_settings()
+            recipients = [r['email'] for r in db.execute(
+                "SELECT email FROM registrace WHERE status = 'approved' "
+                "AND email != '' AND email IS NOT NULL"
+            ).fetchall()]
+            if recipients:
+                event_name = settings.get('event_name', 'Cykloexpedice')
+                event_year = settings.get('event_year', '')
+                safe_title = html_escape(title)
+                aktuality_url = url_for('aktuality', _external=True)
+                notif_subject = f'Nová aktualita – {event_name} {event_year}'
+                notif_body = (
+                    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
+                    '<tr><td align="center" style="padding-bottom:24px;">'
+                    '<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>'
+                    '<td style="background-color:#fbb01f;padding:8px 24px;font-family:Arial,sans-serif;font-size:13px;font-weight:700;color:#1c1c1b;text-transform:uppercase;letter-spacing:2px;">NOVÁ AKTUALITA</td>'
+                    '</tr></table></td></tr>'
+                    '<tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:26px;color:#374151;">'
+                    f'<p style="margin:0 0 8px;">Na webu <strong>{html_escape(event_name)} {html_escape(event_year)}</strong> byla přidána nová aktualita:</p>'
+                    f'<p style="margin:0 0 24px;font-size:18px;font-weight:700;color:#1c1c1b;">{safe_title}</p>'
+                    '</td></tr>'
+                    '<tr><td align="center" style="padding-bottom:24px;">'
+                    '<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>'
+                    f'<td style="background-color:#fbb01f;padding:12px 32px;font-family:Arial,sans-serif;font-size:14px;font-weight:700;color:#1c1c1b;border-radius:8px;">'
+                    f'<a href="{aktuality_url}" style="color:#1c1c1b;text-decoration:none;">Zobrazit aktuality</a>'
+                    '</td></tr></table></td></tr></table>'
+                )
+                notif_html = render_email_layout(notif_body, settings)
+                send_bulk_notifications(recipients, notif_subject, notif_html)
+                flash(f'Aktualita uložena. E-mail bude odeslán {len(recipients)} účastníkům.', 'success')
+            else:
+                flash('Aktualita uložena. Žádní schválení účastníci k notifikaci.', 'success')
+        except Exception as e:
+            print(f'[NOTIFICATION ERROR] {e}')
+            flash('Aktualita uložena.', 'success')
+    else:
+        flash('Aktualita uložena.', 'success')
     return redirect(url_for('admin_aktuality'))
 
 
