@@ -6,6 +6,7 @@ import base64
 import secrets
 import smtplib
 import ssl
+import time as _time
 
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -423,6 +424,20 @@ def send_bulk_notifications(recipients, subject, html_body):
                 _time.sleep(3)
             send_email(email, subject, html_body)
         print(f'[EMAIL] Bulk notification dispatched to {len(recipients)} recipients')
+    Thread(target=_run, daemon=True).start()
+
+
+def send_bulk_emails(email_items, sender_username=None):
+    """Send a list of unique emails individually with a 3s delay between sends.
+
+    email_items: list of (to_email, subject, html_body) tuples.
+    """
+    def _run():
+        for i, (to_email, subject, html_body) in enumerate(email_items):
+            if i > 0:
+                _time.sleep(3)
+            send_email(to_email, subject, html_body, sender_username=sender_username)
+        print(f'[EMAIL] Bulk emails dispatched to {len(email_items)} recipients')
     Thread(target=_run, daemon=True).start()
 
 
@@ -1568,7 +1583,17 @@ def admin_registrace_send_payment(id):
         return redirect(url_for('admin_registrace'))
 
     settings = get_settings()
-    amount = float(settings.get('payment_amount', '0'))
+    custom_amount = request.form.get('amount', '').strip()
+    if custom_amount:
+        try:
+            amount = float(custom_amount)
+            if amount <= 0:
+                raise ValueError
+        except ValueError:
+            flash('Neplatná částka.', 'error')
+            return redirect(url_for('admin_registrace'))
+    else:
+        amount = float(settings.get('payment_amount', '0'))
     iban = settings.get('bank_iban', '')
     bank_account = settings.get('bank_account', '')
 
@@ -1579,8 +1604,6 @@ def admin_registrace_send_payment(id):
     vs = reg['variable_symbol'] or reg['id']
     event_name = settings.get('event_name', 'Cykloexpedice')
     event_year = settings.get('event_year', '')
-
-    # Build payment note from name: "WACHAU_firstname_lastname"
     name_parts = reg['name'].strip().split()
     payment_note = 'WACHAU_' + '_'.join(name_parts)
 
@@ -1641,7 +1664,7 @@ def admin_registrace_bulk_send_payment():
 
     event_name = settings.get('event_name', 'Cykloexpedice')
     event_year = settings.get('event_year', '')
-    sent_count = 0
+    email_items = []
 
     for reg in regs:
         vs = reg['variable_symbol'] or reg['id']
@@ -1671,11 +1694,12 @@ def admin_registrace_bulk_send_payment():
             'contact_email': settings.get('contact_email', ''),
         }
         subject, html = render_email_template('email_payment', tpl_vars, settings)
-        send_email(reg['email'], subject, html, sender_username=session.get('admin_username'))
-        sent_count += 1
+        email_items.append((reg['email'], subject, html))
 
     db.commit()
-    flash(f'Platební QR kód odeslán {sent_count} účastníkům.', 'success')
+    sender = session.get('admin_username')
+    send_bulk_emails(email_items, sender_username=sender)
+    flash(f'Platební QR kód bude odeslán {len(email_items)} účastníkům.', 'success')
     return redirect(url_for('admin_registrace'))
 
 
