@@ -1171,6 +1171,97 @@ class TestAdminAktuality:
         assert r.status_code == 200
 
 
+class TestAktualitaEmailNotification:
+    def _add_approved_registrations(self, app, count):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            for i in range(count):
+                db.execute(
+                    "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
+                    (f'User {i}', f'user{i}@test.cz'))
+            db.commit()
+
+    def test_notify_sends_to_approved(self, app, admin_client):
+        self._add_approved_registrations(app, 3)
+        with patch('app.send_bulk_notifications') as mock_bulk:
+            admin_client.post('/admin/aktuality/new', data={
+                'title': 'Test News', 'content': '<p>Hi</p>',
+                'published': '1', 'notify_participants': '1',
+            }, follow_redirects=True)
+            mock_bulk.assert_called_once()
+            recipients = mock_bulk.call_args[0][0]
+            assert len(recipients) == 3
+            assert 'user0@test.cz' in recipients
+
+    def test_no_notify_without_checkbox(self, app, admin_client):
+        self._add_approved_registrations(app, 3)
+        with patch('app.send_bulk_notifications') as mock_bulk:
+            admin_client.post('/admin/aktuality/new', data={
+                'title': 'Silent News', 'content': '<p>Hi</p>',
+                'published': '1',
+            }, follow_redirects=True)
+            mock_bulk.assert_not_called()
+
+    def test_no_notify_when_unpublished(self, app, admin_client):
+        self._add_approved_registrations(app, 3)
+        with patch('app.send_bulk_notifications') as mock_bulk:
+            admin_client.post('/admin/aktuality/new', data={
+                'title': 'Draft News', 'content': '<p>Hi</p>',
+                'notify_participants': '1',
+            }, follow_redirects=True)
+            mock_bulk.assert_not_called()
+
+    def test_denied_excluded(self, app, admin_client):
+        self._add_approved_registrations(app, 2)
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'denied')",
+                ('Denied User', 'denied@test.cz'))
+            db.execute(
+                "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'pending')",
+                ('Pending User', 'pending@test.cz'))
+            db.commit()
+        with patch('app.send_bulk_notifications') as mock_bulk:
+            admin_client.post('/admin/aktuality/new', data={
+                'title': 'Selective', 'content': '<p>Hi</p>',
+                'published': '1', 'notify_participants': '1',
+            }, follow_redirects=True)
+            recipients = mock_bulk.call_args[0][0]
+            assert len(recipients) == 2
+            assert 'denied@test.cz' not in recipients
+            assert 'pending@test.cz' not in recipients
+
+    def test_flash_shows_recipient_count(self, app, admin_client):
+        self._add_approved_registrations(app, 5)
+        with patch('app.send_bulk_notifications'):
+            r = admin_client.post('/admin/aktuality/new', data={
+                'title': 'Flash Test', 'content': '<p>Hi</p>',
+                'published': '1', 'notify_participants': '1',
+            }, follow_redirects=True)
+            assert '5 účastníkům' in r.data.decode()
+
+    def test_form_has_notify_checkbox(self, admin_client):
+        r = admin_client.get('/admin/aktuality/new')
+        html = r.data.decode()
+        assert 'notify_participants' in html
+        assert 'Odeslat emailem' in html
+
+    def test_bulk_notifications_calls_send_email_individually(self):
+        calls = []
+        original_sleep = _time_module.sleep
+        def tracking_send(to, subj, body, **kw):
+            calls.append(to)
+        with patch('app.send_email', side_effect=tracking_send), \
+             patch('app._time.sleep', side_effect=lambda _: None):
+            from app import send_bulk_notifications
+            send_bulk_notifications(['a@t.cz', 'b@t.cz', 'c@t.cz'], 'Subj', '<p>Body</p>')
+            original_sleep(0.1)
+            assert calls == ['a@t.cz', 'b@t.cz', 'c@t.cz']
+
+
 class TestAdminUbytovani:
     def test_list_ubytovani(self, admin_client):
         r = admin_client.get('/admin/ubytovani')
