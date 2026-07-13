@@ -29,6 +29,8 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from vokativ import vokativ as _vokativ
 
+VERSION = '1.0.0'
+
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__), 'static', 'uploads')
@@ -679,7 +681,8 @@ def inject_globals():
         max_capacity = 30
     registration_full = approved >= max_capacity
     return dict(etapy_nav=etapy, settings=settings, now=datetime.now(),
-                maintenance_active=maintenance_active, registration_full=registration_full)
+                maintenance_active=maintenance_active, registration_full=registration_full,
+                app_version=VERSION)
 
 
 # ── Error handlers ────────────────────────────────────────────────
