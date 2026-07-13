@@ -10,7 +10,6 @@ import time as _time
 
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-import time as _time
 from datetime import datetime, date, timezone
 from functools import wraps
 from html import escape as html_escape
@@ -22,14 +21,14 @@ import qrcode
 import requests
 from flask import (
     Flask, render_template, request, redirect, url_for,
-    session, flash, g, abort, send_from_directory
+    session, flash, g, abort
 )
 import bcrypt
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from vokativ import vokativ as _vokativ
 
-VERSION = '1.0.0'
+VERSION = '1.1.0'
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
@@ -558,8 +557,6 @@ def check_fio_payments():
     """Check Fio Bank API for new incoming payments and match them to pending registrations."""
     db = _connect_db()
     try:
-        rows = db.execute('SELECT key, value FROM site_settings').fetchall()
-        settings = {row['key']: row['value'] for row in rows}
         token = FIO_API_TOKEN
         if not token:
             return
