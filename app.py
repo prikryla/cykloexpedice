@@ -2060,7 +2060,8 @@ def admin_sms_preview(etapa_number):
     return render_template(
         'admin/sms_preview.html', etapa=etapa, message=message, error=error,
         w_start=w_start, w_end=w_end, recipient_count=recipient_count,
-        message_len=len(message) if message else 0,
+        message_len=len(message) if message else 0, wmo_descriptions=WMO_DESCRIPTIONS,
+        forecast_date=today,
     )
 
 

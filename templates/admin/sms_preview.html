@@ -5,6 +5,7 @@
 <div class="flex items-center gap-4 mb-6">
     <a href="{{ url_for('admin_sms') }}" class="text-gray-500 hover:text-gray-700"><i class="bi bi-arrow-left"></i></a>
     <h1 class="text-2xl font-bold">SMS náhled – Etapa {{ etapa.number }}</h1>
+    <span class="text-sm text-gray-500 ml-auto">Předpověď pro: {{ forecast_date }}</span>
 </div>
 
 {% if error %}
@@ -14,31 +15,67 @@
 </div>
 {% else %}
 
+{% macro weather_icon(code) %}
+{% if code in [0, 1] %}
+<i class="bi bi-sun text-amber-500 text-2xl"></i>
+{% elif code in [2] %}
+<i class="bi bi-cloud-sun text-amber-400 text-2xl"></i>
+{% elif code in [3] %}
+<i class="bi bi-clouds text-gray-500 text-2xl"></i>
+{% elif code in [45, 48] %}
+<i class="bi bi-cloud-fog text-gray-400 text-2xl"></i>
+{% elif code in [51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82] %}
+<i class="bi bi-cloud-rain text-blue-500 text-2xl"></i>
+{% elif code in [71, 73, 75, 77, 85, 86] %}
+<i class="bi bi-cloud-snow text-blue-300 text-2xl"></i>
+{% elif code in [95, 96, 99] %}
+<i class="bi bi-cloud-lightning-rain text-yellow-600 text-2xl"></i>
+{% else %}
+<i class="bi bi-question-circle text-gray-400 text-2xl"></i>
+{% endif %}
+{% endmacro %}
+
+{% macro precip_badge(prob) %}
+{% if prob <= 10 %}
+<span class="px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium">{{ prob|round(0)|int }}% – nepravděpodobné</span>
+{% elif prob <= 40 %}
+<span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-xs font-medium">{{ prob|round(0)|int }}% – možné</span>
+{% elif prob <= 70 %}
+<span class="px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 text-xs font-medium">{{ prob|round(0)|int }}% – pravděpodobné</span>
+{% else %}
+<span class="px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-medium">{{ prob|round(0)|int }}% – téměř jisté</span>
+{% endif %}
+{% endmacro %}
+
 <div class="grid md:grid-cols-2 gap-6 mb-6">
     <div class="bg-white rounded-xl shadow p-6">
-        <h2 class="font-bold mb-3">
-            <i class="bi bi-geo-alt text-green-600"></i> {{ w_start.city }}
+        <h2 class="font-bold mb-4 text-green-700">
+            <i class="bi bi-geo-alt"></i> Start – {{ w_start.city }}
         </h2>
-        <div class="grid grid-cols-2 gap-3 text-sm">
-            <div class="text-gray-500">Teplota</div>
-            <div>{{ w_start.temp_min|round(0)|int }}–{{ w_start.temp_max|round(0)|int }} °C</div>
-            <div class="text-gray-500">Počasí</div>
-            <div>{{ w_start.weather_code }} (WMO)</div>
-            <div class="text-gray-500">Srážky</div>
-            <div>{{ w_start.precip_prob|round(0)|int }}%</div>
+        <div class="flex items-center gap-4 mb-4">
+            {{ weather_icon(w_start.weather_code) }}
+            <div>
+                <div class="font-semibold text-lg">{{ wmo_descriptions.get(w_start.weather_code, 'Neznámé') }}</div>
+                <div class="text-gray-500 text-sm">{{ w_start.temp_min|round(0)|int }}–{{ w_start.temp_max|round(0)|int }} °C</div>
+            </div>
+        </div>
+        <div class="text-sm">
+            <span class="text-gray-500">Srážky:</span> {{ precip_badge(w_start.precip_prob) }}
         </div>
     </div>
     <div class="bg-white rounded-xl shadow p-6">
-        <h2 class="font-bold mb-3">
-            <i class="bi bi-geo-alt-fill text-red-600"></i> {{ w_end.city }}
+        <h2 class="font-bold mb-4 text-red-700">
+            <i class="bi bi-geo-alt-fill"></i> Cíl – {{ w_end.city }}
         </h2>
-        <div class="grid grid-cols-2 gap-3 text-sm">
-            <div class="text-gray-500">Teplota</div>
-            <div>{{ w_end.temp_min|round(0)|int }}–{{ w_end.temp_max|round(0)|int }} °C</div>
-            <div class="text-gray-500">Počasí</div>
-            <div>{{ w_end.weather_code }} (WMO)</div>
-            <div class="text-gray-500">Srážky</div>
-            <div>{{ w_end.precip_prob|round(0)|int }}%</div>
+        <div class="flex items-center gap-4 mb-4">
+            {{ weather_icon(w_end.weather_code) }}
+            <div>
+                <div class="font-semibold text-lg">{{ wmo_descriptions.get(w_end.weather_code, 'Neznámé') }}</div>
+                <div class="text-gray-500 text-sm">{{ w_end.temp_min|round(0)|int }}–{{ w_end.temp_max|round(0)|int }} °C</div>
+            </div>
+        </div>
+        <div class="text-sm">
+            <span class="text-gray-500">Srážky:</span> {{ precip_badge(w_end.precip_prob) }}
         </div>
     </div>
 </div>
