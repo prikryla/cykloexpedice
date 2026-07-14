@@ -72,6 +72,10 @@
                    class="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-700 {% if 'email_templates' in request.endpoint %}bg-gray-700 text-white{% endif %}">
                     <i class="bi bi-envelope"></i> E-mailové šablony
                 </a>
+                <a href="{{ url_for('admin_sms') }}"
+                   class="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-700 {% if 'sms' in request.endpoint %}bg-gray-700 text-white{% endif %}">
+                    <i class="bi bi-phone"></i> SMS počasí
+                </a>
                 <a href="{{ url_for('admin_settings') }}"
                    class="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-700 {% if 'settings' in request.endpoint %}bg-gray-700 text-white{% endif %}">
                     <i class="bi bi-sliders"></i> Nastavení

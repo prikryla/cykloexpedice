@@ -1,0 +1,77 @@
+{% extends "admin/base.html" %}
+{% block title %}SMS náhled – Etapa {{ etapa.number }}{% endblock %}
+
+{% block content %}
+<div class="flex items-center gap-4 mb-6">
+    <a href="{{ url_for('admin_sms') }}" class="text-gray-500 hover:text-gray-700"><i class="bi bi-arrow-left"></i></a>
+    <h1 class="text-2xl font-bold">SMS náhled – Etapa {{ etapa.number }}</h1>
+</div>
+
+{% if error %}
+<div class="bg-red-50 border border-red-200 rounded-xl p-6 text-red-800 mb-6">
+    <i class="bi bi-exclamation-triangle text-xl"></i>
+    <p class="mt-2">{{ error }}</p>
+</div>
+{% else %}
+
+<div class="grid md:grid-cols-2 gap-6 mb-6">
+    <div class="bg-white rounded-xl shadow p-6">
+        <h2 class="font-bold mb-3">
+            <i class="bi bi-geo-alt text-green-600"></i> {{ w_start.city }}
+        </h2>
+        <div class="grid grid-cols-2 gap-3 text-sm">
+            <div class="text-gray-500">Teplota</div>
+            <div>{{ w_start.temp_min|round(0)|int }}–{{ w_start.temp_max|round(0)|int }} °C</div>
+            <div class="text-gray-500">Počasí</div>
+            <div>{{ w_start.weather_code }} (WMO)</div>
+            <div class="text-gray-500">Srážky</div>
+            <div>{{ w_start.precip_prob|round(0)|int }}%</div>
+        </div>
+    </div>
+    <div class="bg-white rounded-xl shadow p-6">
+        <h2 class="font-bold mb-3">
+            <i class="bi bi-geo-alt-fill text-red-600"></i> {{ w_end.city }}
+        </h2>
+        <div class="grid grid-cols-2 gap-3 text-sm">
+            <div class="text-gray-500">Teplota</div>
+            <div>{{ w_end.temp_min|round(0)|int }}–{{ w_end.temp_max|round(0)|int }} °C</div>
+            <div class="text-gray-500">Počasí</div>
+            <div>{{ w_end.weather_code }} (WMO)</div>
+            <div class="text-gray-500">Srážky</div>
+            <div>{{ w_end.precip_prob|round(0)|int }}%</div>
+        </div>
+    </div>
+</div>
+
+<div class="bg-white rounded-xl shadow p-6 mb-6">
+    <h2 class="font-bold mb-3"><i class="bi bi-chat-left-text"></i> SMS zpráva</h2>
+    <pre class="bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-sm whitespace-pre-wrap">{{ message }}</pre>
+    <p class="text-sm text-gray-500 mt-2">
+        Délka: {{ message_len }} znaků
+        {% if message_len <= 160 %}
+            <span class="text-green-600">(1 SMS segment)</span>
+        {% elif message_len <= 306 %}
+            <span class="text-amber-600">(2 SMS segmenty)</span>
+        {% else %}
+            <span class="text-red-600">(3+ SMS segmenty)</span>
+        {% endif %}
+    </p>
+</div>
+
+<div class="flex items-center gap-4">
+    <form method="POST" action="{{ url_for('admin_sms_send', etapa_number=etapa.number) }}">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <button type="submit"
+                class="inline-flex items-center gap-2 px-6 py-3 bg-amber-500 text-gray-900 font-bold rounded-lg hover:bg-amber-400 transition"
+                onclick="return confirm('Odeslat SMS {{ recipient_count }} příjemcům?')">
+            <i class="bi bi-send"></i> Odeslat {{ recipient_count }} příjemcům
+        </button>
+    </form>
+    <a href="{{ url_for('admin_sms') }}"
+       class="px-6 py-3 bg-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-300 transition">
+        Zpět
+    </a>
+</div>
+
+{% endif %}
+{% endblock %}

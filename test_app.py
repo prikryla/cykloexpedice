@@ -1,4 +1,5 @@
 """Comprehensive tests for the Cykloexpedice Flask application."""
+import os
 import time as _time_module
 from datetime import datetime, timezone
 from unittest.mock import patch, MagicMock
@@ -2467,6 +2468,304 @@ class TestPragueTimeFilter:
         r = admin_client.get('/admin/registrace')
         html = r.data.decode()
         assert 'prague_time' not in html
+
+
+# ── Weather & SMS tests ──────────────────────────────────────────
+
+
+class TestStripDiacritics:
+    def test_basic(self):
+        from app import strip_diacritics
+        assert strip_diacritics('Přeháňky') == 'Prehanky'
+
+    def test_full_czech(self):
+        from app import strip_diacritics
+        assert strip_diacritics('žluťoučký kůň') == 'zlutoucky kun'
+
+    def test_no_diacritics(self):
+        from app import strip_diacritics
+        assert strip_diacritics('hello') == 'hello'
+
+    def test_empty(self):
+        from app import strip_diacritics
+        assert strip_diacritics('') == ''
+
+    def test_uppercase(self):
+        from app import strip_diacritics
+        assert strip_diacritics('ŘÍČANY') == 'RICANY'
+
+
+class TestGeocodeCity:
+    def test_success(self):
+        from app import geocode_city
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            'results': [{'latitude': 49.59, 'longitude': 17.25}]
+        }
+        with patch('app.requests.get', return_value=mock_response) as mock_get:
+            result = geocode_city('Olomouc')
+            assert result == (49.59, 17.25)
+            mock_get.assert_called_once()
+            assert mock_get.call_args[1]['params']['name'] == 'Olomouc'
+
+    def test_not_found(self):
+        from app import geocode_city
+        mock_response = MagicMock()
+        mock_response.json.return_value = {'results': []}
+        with patch('app.requests.get', return_value=mock_response):
+            assert geocode_city('NonExistentPlace12345') is None
+
+    def test_empty_results(self):
+        from app import geocode_city
+        mock_response = MagicMock()
+        mock_response.json.return_value = {}
+        with patch('app.requests.get', return_value=mock_response):
+            assert geocode_city('Nowhere') is None
+
+
+class TestGetWeatherForecast:
+    def _mock_weather_response(self, date_str='2026-09-11'):
+        mock_geo = MagicMock()
+        mock_geo.json.return_value = {'results': [{'latitude': 49.59, 'longitude': 17.25}]}
+        mock_weather = MagicMock()
+        mock_weather.json.return_value = {
+            'daily': {
+                'time': [date_str],
+                'temperature_2m_max': [24.5],
+                'temperature_2m_min': [14.2],
+                'weather_code': [2],
+                'precipitation_probability_max': [35],
+            }
+        }
+        return mock_geo, mock_weather
+
+    def test_success(self):
+        from app import get_weather_forecast
+        mock_geo, mock_weather = self._mock_weather_response()
+        with patch('app.requests.get', side_effect=[mock_geo, mock_weather]):
+            result = get_weather_forecast('Olomouc', '2026-09-11')
+            assert result is not None
+            assert result['city'] == 'Olomouc'
+            assert result['temp_max'] == 24.5
+            assert result['temp_min'] == 14.2
+            assert result['weather_code'] == 2
+            assert result['precip_prob'] == 35
+
+    def test_geocode_fails(self):
+        from app import get_weather_forecast
+        mock_geo = MagicMock()
+        mock_geo.json.return_value = {}
+        with patch('app.requests.get', return_value=mock_geo):
+            assert get_weather_forecast('Nowhere', '2026-09-11') is None
+
+    def test_date_not_in_forecast(self):
+        from app import get_weather_forecast
+        mock_geo, mock_weather = self._mock_weather_response('2026-09-11')
+        with patch('app.requests.get', side_effect=[mock_geo, mock_weather]):
+            assert get_weather_forecast('Olomouc', '2026-12-25') is None
+
+
+class TestComposeWeatherSms:
+    def test_format(self):
+        from app import compose_weather_sms
+        etapa = {'number': 1, 'date': '11.09.2026 (čtvrtek)'}
+        w_start = {'city': 'Olomouc', 'temp_min': 14.2, 'temp_max': 24.5, 'weather_code': 0, 'precip_prob': 5}
+        w_end = {'city': 'Brno', 'temp_min': 16.0, 'temp_max': 26.3, 'weather_code': 3, 'precip_prob': 40}
+        msg = compose_weather_sms(etapa, w_start, w_end)
+        assert 'Cykloexpedice Den 1 (11.9.)' in msg
+        assert 'Olomouc: Jasno 14-24C' in msg
+        assert 'Brno: Zatazeno 16-26C, dest 40%' in msg
+        assert 'Hezkou jizdu!' in msg
+
+    def test_no_diacritics(self):
+        from app import compose_weather_sms
+        etapa = {'number': 2, 'date': '12.09.2026 (pátek)'}
+        w_start = {'city': 'Poděbrady', 'temp_min': 15, 'temp_max': 22, 'weather_code': 80, 'precip_prob': 60}
+        w_end = {'city': 'Říčany', 'temp_min': 14, 'temp_max': 21, 'weather_code': 61, 'precip_prob': 80}
+        msg = compose_weather_sms(etapa, w_start, w_end)
+        assert 'Podebrady' in msg
+        assert 'Ricany' in msg
+        assert 'Prehnanky' in msg
+        for ch in 'áčďéěíňóřšťúůýž':
+            assert ch not in msg
+
+    def test_under_160_chars(self):
+        from app import compose_weather_sms
+        etapa = {'number': 1, 'date': '11.09.2026 (čtvrtek)'}
+        w_start = {'city': 'Olomouc', 'temp_min': 14, 'temp_max': 24, 'weather_code': 0, 'precip_prob': 5}
+        w_end = {'city': 'Brno', 'temp_min': 16, 'temp_max': 26, 'weather_code': 3, 'precip_prob': 10}
+        msg = compose_weather_sms(etapa, w_start, w_end)
+        assert len(msg) <= 160
+
+    def test_low_precip_hidden(self):
+        from app import compose_weather_sms
+        etapa = {'number': 1, 'date': '11.09.2026 (čtvrtek)'}
+        w_start = {'city': 'Olomouc', 'temp_min': 14, 'temp_max': 24, 'weather_code': 0, 'precip_prob': 10}
+        w_end = {'city': 'Brno', 'temp_min': 16, 'temp_max': 26, 'weather_code': 0, 'precip_prob': 20}
+        msg = compose_weather_sms(etapa, w_start, w_end)
+        assert 'dest' not in msg
+
+
+class TestSendSmsStub:
+    def test_stub_when_no_credentials(self):
+        from app import send_sms
+        with patch.dict(os.environ, {}, clear=True):
+            result = send_sms('+420123456789', 'Test message')
+            assert result is False
+
+
+class TestSendWeatherSmsForEtapa:
+    def _setup_etapa_and_registrations(self, app):
+        import app as flask_app
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO etapy (number, title, date, route, route_start, route_end, color) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (1, 'Test Etapa', '11.09.2026 (čtvrtek)', 'A - B', 'Olomouc', 'Brno', '#ffc107'),
+            )
+            for i, phone in enumerate(['123456789', '987654321', '']):
+                db.execute(
+                    "INSERT INTO registrace (name, email, phone, status) VALUES (?, ?, ?, 'approved')",
+                    (f'User {i}', f'user{i}@test.cz', phone),
+                )
+            db.execute(
+                "INSERT INTO registrace (name, email, phone, status) VALUES (?, ?, ?, 'pending')",
+                ('Pending User', 'pending@test.cz', '111222333'),
+            )
+            db.commit()
+
+    def test_sends_to_approved_with_phone(self, app):
+        self._setup_etapa_and_registrations(app)
+        mock_geo = MagicMock()
+        mock_geo.json.return_value = {'results': [{'latitude': 49.59, 'longitude': 17.25}]}
+        today = datetime.now().strftime('%Y-%m-%d')
+        mock_weather = MagicMock()
+        mock_weather.json.return_value = {
+            'daily': {
+                'time': [today],
+                'temperature_2m_max': [24],
+                'temperature_2m_min': [14],
+                'weather_code': [0],
+                'precipitation_probability_max': [5],
+            }
+        }
+        with patch('app.requests.get', side_effect=[mock_geo, mock_weather, mock_geo, mock_weather]):
+            with patch('app.send_sms', return_value=True) as mock_sms:
+                with patch('app._time.sleep'):
+                    import app as flask_app
+                    with app.app_context():
+                        sent = flask_app.send_weather_sms_for_etapa(1)
+                        assert sent == 2
+                        assert mock_sms.call_count == 2
+                        phones = [call[0][0] for call in mock_sms.call_args_list]
+                        assert '+420123456789' in phones
+                        assert '+420987654321' in phones
+
+    def test_skips_if_no_route_start(self, app):
+        import app as flask_app
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO etapy (number, title, date, route, color) VALUES (?, ?, ?, ?, ?)",
+                (1, 'Test', '11.09.2026', 'A-B', '#ffc107'),
+            )
+            db.commit()
+            sent = flask_app.send_weather_sms_for_etapa(1)
+            assert sent == 0
+
+
+class TestAdminSmsPage:
+    def _create_etapa(self, app):
+        import app as flask_app
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO etapy (number, title, date, route, route_start, route_end, color) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (1, 'Test Etapa', '11.09.2026', 'A-B', 'Olomouc', 'Brno', '#ffc107'),
+            )
+            db.commit()
+
+    def test_sms_page_loads(self, admin_client, app):
+        self._create_etapa(app)
+        r = admin_client.get('/admin/sms')
+        assert r.status_code == 200
+        html = r.data.decode()
+        assert 'SMS' in html
+        assert 'Olomouc' in html
+        assert 'Brno' in html
+
+    def test_sms_page_shows_recipient_count(self, admin_client, app):
+        import app as flask_app
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO registrace (name, email, phone, status) VALUES (?, ?, ?, 'approved')",
+                ('Test', 'test@test.cz', '123456789'),
+            )
+            db.commit()
+        r = admin_client.get('/admin/sms')
+        assert r.status_code == 200
+
+    def test_sms_preview_with_weather(self, admin_client, app):
+        self._create_etapa(app)
+        mock_geo = MagicMock()
+        mock_geo.json.return_value = {'results': [{'latitude': 49.59, 'longitude': 17.25}]}
+        today = datetime.now().strftime('%Y-%m-%d')
+        mock_weather = MagicMock()
+        mock_weather.json.return_value = {
+            'daily': {
+                'time': [today],
+                'temperature_2m_max': [24],
+                'temperature_2m_min': [14],
+                'weather_code': [0],
+                'precipitation_probability_max': [5],
+            }
+        }
+        with patch('app.requests.get', side_effect=[mock_geo, mock_weather, mock_geo, mock_weather]):
+            r = admin_client.get('/admin/sms/preview/1')
+            assert r.status_code == 200
+            html = r.data.decode()
+            assert 'Cykloexpedice' in html
+            assert 'Jasno' in html
+
+    def test_sms_preview_missing_locations(self, admin_client, app):
+        import app as flask_app
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO etapy (number, title, date, route, color) VALUES (?, ?, ?, ?, ?)",
+                (1, 'Test', '11.09.2026', 'A-B', '#ffc107'),
+            )
+            db.commit()
+        r = admin_client.get('/admin/sms/preview/1', follow_redirects=True)
+        assert r.status_code == 200
+
+    def test_sms_send_endpoint(self, admin_client, app):
+        self._create_etapa(app)
+        with patch('app.send_weather_sms_for_etapa', return_value=5):
+            r = admin_client.post('/admin/sms/send/1', follow_redirects=True)
+            assert r.status_code == 200
+
+
+class TestEtapaRouteStartEnd:
+    def test_save_route_start_end(self, admin_client, app):
+        r = admin_client.post('/admin/etapy/new', data={
+            'number': '1', 'title': 'Test Etapa',
+            'date': '11.09.2026', 'distance': '100 km',
+            'elevation_up': '500m', 'elevation_down': '300m',
+            'route': 'A - B', 'route_start': 'Olomouc', 'route_end': 'Brno',
+            'waypoints': '', 'description': '', 'map_link': '', 'youtube_links': '',
+            'color': '#ffc107',
+        }, follow_redirects=True)
+        assert r.status_code == 200
+        import app as flask_app
+        with app.app_context():
+            db = flask_app.get_db()
+            etapa = db.execute('SELECT * FROM etapy WHERE number = 1').fetchone()
+            assert etapa['route_start'] == 'Olomouc'
+            assert etapa['route_end'] == 'Brno'
 
 
 class TestNotificationHtmlEscaping:
