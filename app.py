@@ -500,6 +500,7 @@ def get_weather_forecast(city_name, date_str):
         params={
             'latitude': lat, 'longitude': lon,
             'daily': 'temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code',
+            'hourly': 'temperature_2m',
             'timezone': 'Europe/Prague',
         },
         timeout=10,
@@ -510,10 +511,19 @@ def get_weather_forecast(city_name, date_str):
     if date_str not in times:
         return None
     idx = times.index(date_str)
+    hourly = data.get('hourly', {})
+    hourly_times = hourly.get('time', [])
+    hourly_temps = hourly.get('temperature_2m', [])
+    day_temps = []
+    for ht, temp in zip(hourly_times, hourly_temps):
+        if ht.startswith(date_str) and temp is not None:
+            hour = int(ht[11:13])
+            if 7 <= hour <= 18:
+                day_temps.append(temp)
+    temp_avg = round(sum(day_temps) / len(day_temps), 1) if day_temps else (daily['temperature_2m_max'][idx] + daily['temperature_2m_min'][idx]) / 2
     return {
         'city': city_name,
-        'temp_min': daily['temperature_2m_min'][idx],
-        'temp_max': daily['temperature_2m_max'][idx],
+        'temp_avg': temp_avg,
         'weather_code': daily['weather_code'][idx],
         'precip_prob': daily['precipitation_probability_max'][idx],
     }
@@ -539,8 +549,7 @@ def compose_weather_sms(etapa, weather_start, weather_end):
         date_short = date_part
 
     ws, we = weather_start, weather_end
-    temp_min = min(ws['temp_min'], we['temp_min'])
-    temp_max = max(ws['temp_max'], we['temp_max'])
+    temp_avg = round((ws['temp_avg'] + we['temp_avg']) / 2)
     sev_s = WMO_SEVERITY.get(ws['weather_code'], 0)
     sev_e = WMO_SEVERITY.get(we['weather_code'], 0)
     better_code = ws['weather_code'] if sev_s <= sev_e else we['weather_code']
@@ -564,7 +573,7 @@ def compose_weather_sms(etapa, weather_start, weather_end):
     else:
         lines.append(f'{base_desc}.')
 
-    lines.append(f'Teplota {temp_min:.0f}-{temp_max:.0f}°C.')
+    lines.append(f'Teplota pres den: {temp_avg}°C.')
     lines.append('Prijemnou jizdu!')
     return strip_diacritics('\n'.join(lines))
 

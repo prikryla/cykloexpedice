@@ -2527,15 +2527,21 @@ class TestGetWeatherForecast:
     def _mock_weather_response(self, date_str='2026-09-11'):
         mock_geo = MagicMock()
         mock_geo.json.return_value = {'results': [{'latitude': 49.59, 'longitude': 17.25}]}
+        hourly_times = [f'{date_str}T{h:02d}:00' for h in range(24)]
+        hourly_temps = [12, 11, 10, 10, 11, 13, 15, 17, 19, 21, 23, 24, 25, 25, 24, 23, 21, 20, 18, 16, 15, 14, 13, 12]
         mock_weather = MagicMock()
         mock_weather.json.return_value = {
             'daily': {
                 'time': [date_str],
-                'temperature_2m_max': [24.5],
-                'temperature_2m_min': [14.2],
+                'temperature_2m_max': [25],
+                'temperature_2m_min': [10],
                 'weather_code': [2],
                 'precipitation_probability_max': [35],
-            }
+            },
+            'hourly': {
+                'time': hourly_times,
+                'temperature_2m': hourly_temps,
+            },
         }
         return mock_geo, mock_weather
 
@@ -2546,8 +2552,7 @@ class TestGetWeatherForecast:
             result = get_weather_forecast('Olomouc', '2026-09-11')
             assert result is not None
             assert result['city'] == 'Olomouc'
-            assert result['temp_max'] == 24.5
-            assert result['temp_min'] == 14.2
+            assert result['temp_avg'] == 21.7
             assert result['weather_code'] == 2
             assert result['precip_prob'] == 35
 
@@ -2569,21 +2574,21 @@ class TestComposeWeatherSms:
     def test_format_nice_weather(self):
         from app import compose_weather_sms
         etapa = {'number': 1, 'date': '11.09.2026 (čtvrtek)'}
-        w_start = {'city': 'Olomouc', 'temp_min': 14.2, 'temp_max': 24.5, 'weather_code': 0, 'precip_prob': 5}
-        w_end = {'city': 'Brno', 'temp_min': 16.0, 'temp_max': 26.3, 'weather_code': 1, 'precip_prob': 10}
+        w_start = {'city': 'Olomouc', 'temp_avg': 20.5, 'weather_code': 0, 'precip_prob': 5}
+        w_end = {'city': 'Brno', 'temp_avg': 22.0, 'weather_code': 1, 'precip_prob': 10}
         msg = compose_weather_sms(etapa, w_start, w_end)
         assert 'Predpoved pocasi' in msg
         assert 'Cykloexpedice Den 1 (11.9.)' in msg
         assert 'Olomouc - Brno' in msg
         assert 'Jasno.' in msg
-        assert '14-26' in msg
+        assert 'Teplota pres den: 21' in msg
         assert 'Prijemnou jizdu!' in msg
 
     def test_storm_localized_to_start(self):
         from app import compose_weather_sms
         etapa = {'number': 1, 'date': '11.09.2026 (čtvrtek)'}
-        w_start = {'city': 'Blansko', 'temp_min': 16, 'temp_max': 31, 'weather_code': 95, 'precip_prob': 43}
-        w_end = {'city': 'Znojmo', 'temp_min': 18, 'temp_max': 31, 'weather_code': 3, 'precip_prob': 18}
+        w_start = {'city': 'Blansko', 'temp_avg': 25, 'weather_code': 95, 'precip_prob': 43}
+        w_end = {'city': 'Znojmo', 'temp_avg': 26, 'weather_code': 3, 'precip_prob': 18}
         msg = compose_weather_sms(etapa, w_start, w_end)
         assert 'bourka v okoli Blansko' in msg
         assert 'Zatazeno' in msg
@@ -2591,8 +2596,8 @@ class TestComposeWeatherSms:
     def test_rain_localized_to_end(self):
         from app import compose_weather_sms
         etapa = {'number': 1, 'date': '11.09.2026 (čtvrtek)'}
-        w_start = {'city': 'Blansko', 'temp_min': 16, 'temp_max': 31, 'weather_code': 0, 'precip_prob': 5}
-        w_end = {'city': 'Znojmo', 'temp_min': 18, 'temp_max': 31, 'weather_code': 61, 'precip_prob': 60}
+        w_start = {'city': 'Blansko', 'temp_avg': 25, 'weather_code': 0, 'precip_prob': 5}
+        w_end = {'city': 'Znojmo', 'temp_avg': 26, 'weather_code': 61, 'precip_prob': 60}
         msg = compose_weather_sms(etapa, w_start, w_end)
         assert 'v okoli Znojmo' in msg
         assert 'Jasno' in msg
@@ -2600,16 +2605,16 @@ class TestComposeWeatherSms:
     def test_rain_on_whole_route(self):
         from app import compose_weather_sms
         etapa = {'number': 1, 'date': '11.09.2026 (čtvrtek)'}
-        w_start = {'city': 'A', 'temp_min': 14, 'temp_max': 20, 'weather_code': 61, 'precip_prob': 70}
-        w_end = {'city': 'B', 'temp_min': 13, 'temp_max': 19, 'weather_code': 63, 'precip_prob': 80}
+        w_start = {'city': 'A', 'temp_avg': 17, 'weather_code': 61, 'precip_prob': 70}
+        w_end = {'city': 'B', 'temp_avg': 16, 'weather_code': 63, 'precip_prob': 80}
         msg = compose_weather_sms(etapa, w_start, w_end)
         assert 'na cele trase' in msg
 
     def test_no_diacritics(self):
         from app import compose_weather_sms
         etapa = {'number': 2, 'date': '12.09.2026 (pátek)'}
-        w_start = {'city': 'Poděbrady', 'temp_min': 15, 'temp_max': 22, 'weather_code': 80, 'precip_prob': 60}
-        w_end = {'city': 'Říčany', 'temp_min': 14, 'temp_max': 21, 'weather_code': 61, 'precip_prob': 80}
+        w_start = {'city': 'Poděbrady', 'temp_avg': 19, 'weather_code': 80, 'precip_prob': 60}
+        w_end = {'city': 'Říčany', 'temp_avg': 18, 'weather_code': 61, 'precip_prob': 80}
         msg = compose_weather_sms(etapa, w_start, w_end)
         assert 'Podebrady' in msg
         assert 'Ricany' in msg
@@ -2619,16 +2624,16 @@ class TestComposeWeatherSms:
     def test_under_160_chars(self):
         from app import compose_weather_sms
         etapa = {'number': 1, 'date': '11.09.2026 (čtvrtek)'}
-        w_start = {'city': 'Olomouc', 'temp_min': 14, 'temp_max': 24, 'weather_code': 0, 'precip_prob': 5}
-        w_end = {'city': 'Brno', 'temp_min': 16, 'temp_max': 26, 'weather_code': 3, 'precip_prob': 10}
+        w_start = {'city': 'Olomouc', 'temp_avg': 20, 'weather_code': 0, 'precip_prob': 5}
+        w_end = {'city': 'Brno', 'temp_avg': 22, 'weather_code': 3, 'precip_prob': 10}
         msg = compose_weather_sms(etapa, w_start, w_end)
         assert len(msg) <= 160
 
     def test_under_160_chars_with_long_names(self):
         from app import compose_weather_sms
         etapa = {'number': 1, 'date': '11.09.2026 (čtvrtek)'}
-        w_start = {'city': 'Česká Třebová', 'temp_min': 14, 'temp_max': 24, 'weather_code': 95, 'precip_prob': 80}
-        w_end = {'city': 'Moravská Třebová', 'temp_min': 12, 'temp_max': 22, 'weather_code': 3, 'precip_prob': 10}
+        w_start = {'city': 'Česká Třebová', 'temp_avg': 20, 'weather_code': 95, 'precip_prob': 80}
+        w_end = {'city': 'Moravská Třebová', 'temp_avg': 18, 'weather_code': 3, 'precip_prob': 10}
         msg = compose_weather_sms(etapa, w_start, w_end)
         assert len(msg) <= 160
 
@@ -2667,15 +2672,21 @@ class TestSendWeatherSmsForEtapa:
         mock_geo = MagicMock()
         mock_geo.json.return_value = {'results': [{'latitude': 49.59, 'longitude': 17.25}]}
         today = datetime.now().strftime('%Y-%m-%d')
+        hourly_times = [f'{today}T{h:02d}:00' for h in range(24)]
+        hourly_temps = [12, 11, 10, 10, 11, 13, 15, 17, 19, 21, 23, 24, 25, 25, 24, 23, 21, 20, 18, 16, 15, 14, 13, 12]
         mock_weather = MagicMock()
         mock_weather.json.return_value = {
             'daily': {
                 'time': [today],
-                'temperature_2m_max': [24],
-                'temperature_2m_min': [14],
+                'temperature_2m_max': [25],
+                'temperature_2m_min': [10],
                 'weather_code': [0],
                 'precipitation_probability_max': [5],
-            }
+            },
+            'hourly': {
+                'time': hourly_times,
+                'temperature_2m': hourly_temps,
+            },
         }
         with patch('app.requests.get', side_effect=[mock_geo, mock_weather, mock_geo, mock_weather]):
             with patch('app.send_sms', return_value=True) as mock_sms:
@@ -2740,15 +2751,21 @@ class TestAdminSmsPage:
         mock_geo = MagicMock()
         mock_geo.json.return_value = {'results': [{'latitude': 49.59, 'longitude': 17.25}]}
         today = datetime.now().strftime('%Y-%m-%d')
+        hourly_times = [f'{today}T{h:02d}:00' for h in range(24)]
+        hourly_temps = [12, 11, 10, 10, 11, 13, 15, 17, 19, 21, 23, 24, 25, 25, 24, 23, 21, 20, 18, 16, 15, 14, 13, 12]
         mock_weather = MagicMock()
         mock_weather.json.return_value = {
             'daily': {
                 'time': [today],
-                'temperature_2m_max': [24],
-                'temperature_2m_min': [14],
+                'temperature_2m_max': [25],
+                'temperature_2m_min': [10],
                 'weather_code': [0],
                 'precipitation_probability_max': [5],
-            }
+            },
+            'hourly': {
+                'time': hourly_times,
+                'temperature_2m': hourly_temps,
+            },
         }
         with patch('app.requests.get', side_effect=[mock_geo, mock_weather, mock_geo, mock_weather]):
             r = admin_client.get('/admin/sms/preview/1')

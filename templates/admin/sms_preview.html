@@ -56,7 +56,7 @@
             {{ weather_icon(w_start.weather_code) }}
             <div>
                 <div class="font-semibold text-lg">{{ wmo_descriptions.get(w_start.weather_code, 'Neznámé') }}</div>
-                <div class="text-gray-500 text-sm">{{ w_start.temp_min|round(0)|int }}–{{ w_start.temp_max|round(0)|int }} °C</div>
+                <div class="text-gray-500 text-sm">{{ w_start.temp_avg|round(0)|int }} °C (průměr 7–18h)</div>
             </div>
         </div>
         <div class="text-sm">
@@ -71,7 +71,7 @@
             {{ weather_icon(w_end.weather_code) }}
             <div>
                 <div class="font-semibold text-lg">{{ wmo_descriptions.get(w_end.weather_code, 'Neznámé') }}</div>
-                <div class="text-gray-500 text-sm">{{ w_end.temp_min|round(0)|int }}–{{ w_end.temp_max|round(0)|int }} °C</div>
+                <div class="text-gray-500 text-sm">{{ w_end.temp_avg|round(0)|int }} °C (průměr 7–18h)</div>
             </div>
         </div>
         <div class="text-sm">
