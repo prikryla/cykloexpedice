@@ -519,6 +519,16 @@ def get_weather_forecast(city_name, date_str):
     }
 
 
+WMO_SEVERITY = {
+    0: 0, 1: 1, 2: 2, 3: 3, 45: 4, 48: 4,
+    51: 5, 53: 5, 55: 6, 56: 6, 57: 7,
+    61: 7, 63: 8, 65: 9, 66: 8, 67: 9,
+    71: 7, 73: 8, 75: 9, 77: 7,
+    80: 7, 81: 8, 82: 9, 85: 7, 86: 8,
+    95: 10, 96: 11, 99: 11,
+}
+
+
 def compose_weather_sms(etapa, weather_start, weather_end):
     date_raw = etapa['date'] or ''
     date_part = date_raw.split('(')[0].strip()
@@ -528,14 +538,34 @@ def compose_weather_sms(etapa, weather_start, weather_end):
     except ValueError:
         date_short = date_part
 
-    lines = [f'Cykloexpedice Den {etapa["number"]} ({date_short})']
-    for w in [weather_start, weather_end]:
-        desc = WMO_DESCRIPTIONS.get(w['weather_code'], '?')
-        line = f'{w["city"]}: {desc} {w["temp_min"]:.0f}-{w["temp_max"]:.0f}C'
-        if w['precip_prob'] and w['precip_prob'] > 20:
-            line += f', dest {w["precip_prob"]:.0f}%'
-        lines.append(line)
-    lines.append('Hezkou jizdu!')
+    ws, we = weather_start, weather_end
+    temp_min = min(ws['temp_min'], we['temp_min'])
+    temp_max = max(ws['temp_max'], we['temp_max'])
+    sev_s = WMO_SEVERITY.get(ws['weather_code'], 0)
+    sev_e = WMO_SEVERITY.get(we['weather_code'], 0)
+    better_code = ws['weather_code'] if sev_s <= sev_e else we['weather_code']
+    worse_code = ws['weather_code'] if sev_s >= sev_e else we['weather_code']
+    bad_threshold = 5
+    s_bad = sev_s >= bad_threshold
+    e_bad = sev_e >= bad_threshold
+    base_desc = WMO_DESCRIPTIONS.get(better_code, '?')
+    worse_desc = WMO_DESCRIPTIONS.get(worse_code, '?')
+
+    lines = [f'Predpoved pocasi']
+    lines.append(f'Cykloexpedice Den {etapa["number"]} ({date_short})')
+    lines.append(f'{ws["city"]} - {we["city"]}')
+
+    if s_bad and e_bad:
+        lines.append(f'{worse_desc} na cele trase.')
+    elif s_bad and not e_bad:
+        lines.append(f'{base_desc}, {worse_desc.lower()} v okoli {ws["city"]}.')
+    elif e_bad and not s_bad:
+        lines.append(f'{base_desc}, {worse_desc.lower()} v okoli {we["city"]}.')
+    else:
+        lines.append(f'{base_desc}.')
+
+    lines.append(f'Teplota {temp_min:.0f}-{temp_max:.0f}°C.')
+    lines.append('Prijemnou jizdu!')
     return strip_diacritics('\n'.join(lines))
 
 

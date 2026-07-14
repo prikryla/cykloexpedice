@@ -2566,16 +2566,44 @@ class TestGetWeatherForecast:
 
 
 class TestComposeWeatherSms:
-    def test_format(self):
+    def test_format_nice_weather(self):
         from app import compose_weather_sms
         etapa = {'number': 1, 'date': '11.09.2026 (čtvrtek)'}
         w_start = {'city': 'Olomouc', 'temp_min': 14.2, 'temp_max': 24.5, 'weather_code': 0, 'precip_prob': 5}
-        w_end = {'city': 'Brno', 'temp_min': 16.0, 'temp_max': 26.3, 'weather_code': 3, 'precip_prob': 40}
+        w_end = {'city': 'Brno', 'temp_min': 16.0, 'temp_max': 26.3, 'weather_code': 1, 'precip_prob': 10}
         msg = compose_weather_sms(etapa, w_start, w_end)
+        assert 'Predpoved pocasi' in msg
         assert 'Cykloexpedice Den 1 (11.9.)' in msg
-        assert 'Olomouc: Jasno 14-24C' in msg
-        assert 'Brno: Zatazeno 16-26C, dest 40%' in msg
-        assert 'Hezkou jizdu!' in msg
+        assert 'Olomouc - Brno' in msg
+        assert 'Jasno.' in msg
+        assert '14-26' in msg
+        assert 'Prijemnou jizdu!' in msg
+
+    def test_storm_localized_to_start(self):
+        from app import compose_weather_sms
+        etapa = {'number': 1, 'date': '11.09.2026 (čtvrtek)'}
+        w_start = {'city': 'Blansko', 'temp_min': 16, 'temp_max': 31, 'weather_code': 95, 'precip_prob': 43}
+        w_end = {'city': 'Znojmo', 'temp_min': 18, 'temp_max': 31, 'weather_code': 3, 'precip_prob': 18}
+        msg = compose_weather_sms(etapa, w_start, w_end)
+        assert 'bourka v okoli Blansko' in msg
+        assert 'Zatazeno' in msg
+
+    def test_rain_localized_to_end(self):
+        from app import compose_weather_sms
+        etapa = {'number': 1, 'date': '11.09.2026 (čtvrtek)'}
+        w_start = {'city': 'Blansko', 'temp_min': 16, 'temp_max': 31, 'weather_code': 0, 'precip_prob': 5}
+        w_end = {'city': 'Znojmo', 'temp_min': 18, 'temp_max': 31, 'weather_code': 61, 'precip_prob': 60}
+        msg = compose_weather_sms(etapa, w_start, w_end)
+        assert 'v okoli Znojmo' in msg
+        assert 'Jasno' in msg
+
+    def test_rain_on_whole_route(self):
+        from app import compose_weather_sms
+        etapa = {'number': 1, 'date': '11.09.2026 (čtvrtek)'}
+        w_start = {'city': 'A', 'temp_min': 14, 'temp_max': 20, 'weather_code': 61, 'precip_prob': 70}
+        w_end = {'city': 'B', 'temp_min': 13, 'temp_max': 19, 'weather_code': 63, 'precip_prob': 80}
+        msg = compose_weather_sms(etapa, w_start, w_end)
+        assert 'na cele trase' in msg
 
     def test_no_diacritics(self):
         from app import compose_weather_sms
@@ -2585,7 +2613,6 @@ class TestComposeWeatherSms:
         msg = compose_weather_sms(etapa, w_start, w_end)
         assert 'Podebrady' in msg
         assert 'Ricany' in msg
-        assert 'Prehnanky' in msg
         for ch in 'áčďéěíňóřšťúůýž':
             assert ch not in msg
 
@@ -2597,13 +2624,13 @@ class TestComposeWeatherSms:
         msg = compose_weather_sms(etapa, w_start, w_end)
         assert len(msg) <= 160
 
-    def test_low_precip_hidden(self):
+    def test_under_160_chars_with_long_names(self):
         from app import compose_weather_sms
         etapa = {'number': 1, 'date': '11.09.2026 (čtvrtek)'}
-        w_start = {'city': 'Olomouc', 'temp_min': 14, 'temp_max': 24, 'weather_code': 0, 'precip_prob': 10}
-        w_end = {'city': 'Brno', 'temp_min': 16, 'temp_max': 26, 'weather_code': 0, 'precip_prob': 20}
+        w_start = {'city': 'Česká Třebová', 'temp_min': 14, 'temp_max': 24, 'weather_code': 95, 'precip_prob': 80}
+        w_end = {'city': 'Moravská Třebová', 'temp_min': 12, 'temp_max': 22, 'weather_code': 3, 'precip_prob': 10}
         msg = compose_weather_sms(etapa, w_start, w_end)
-        assert 'dest' not in msg
+        assert len(msg) <= 160
 
 
 class TestSendSmsStub:
