@@ -28,7 +28,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from vokativ import vokativ as _vokativ
 
-VERSION = '1.1.0'
+VERSION = '1.2.0'
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
@@ -212,6 +212,17 @@ def init_db():
         "ALTER TABLE registrace ADD COLUMN payment_status TEXT DEFAULT 'none'",
         "ALTER TABLE registrace ADD COLUMN payment_amount REAL",
         "ALTER TABLE registrace ADD COLUMN qr_sent_at TIMESTAMP",
+    ]:
+        try:
+            db.execute(col_stmt)
+            db.commit()
+        except Exception:
+            db._conn.rollback()
+
+    # Add weather location columns to etapy if they don't exist (migration for existing DBs)
+    for col_stmt in [
+        "ALTER TABLE etapy ADD COLUMN route_start TEXT",
+        "ALTER TABLE etapy ADD COLUMN route_end TEXT",
     ]:
         try:
             db.execute(col_stmt)
@@ -440,6 +451,169 @@ def send_bulk_emails(email_items, sender_username=None):
             send_email(to_email, subject, html_body, sender_username=sender_username)
         print(f'[EMAIL] Bulk emails dispatched to {len(email_items)} recipients')
     Thread(target=_run, daemon=True).start()
+
+
+# ── Weather & SMS ─────────────────────────────────────────────
+
+_DIACRITICS_TABLE = str.maketrans(
+    'áčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ',
+    'acdeeinorstuuyzACDEEINORSTUUYZ',
+)
+
+WMO_DESCRIPTIONS = {
+    0: 'Jasno', 1: 'Prevazne jasno', 2: 'Polojasno', 3: 'Zatazeno',
+    45: 'Mlha', 48: 'Mlha',
+    51: 'Mrholeni', 53: 'Mrholeni', 55: 'Mrholeni',
+    56: 'Mrznouci mrholeni', 57: 'Mrznouci mrholeni',
+    61: 'Dest', 63: 'Dest', 65: 'Silny dest',
+    66: 'Mrznouci dest', 67: 'Mrznouci dest',
+    71: 'Snezeni', 73: 'Snezeni', 75: 'Silne snezeni', 77: 'Snehove krupe',
+    80: 'Prehnanky', 81: 'Prehnanky', 82: 'Silne prehnanky',
+    85: 'Snehove prehnanky', 86: 'Snehove prehnanky',
+    95: 'Bourka', 96: 'Bourka s krupobitim', 99: 'Bourka s krupobitim',
+}
+
+
+def strip_diacritics(text):
+    return text.translate(_DIACRITICS_TABLE)
+
+
+def geocode_city(name):
+    resp = requests.get(
+        'https://geocoding-api.open-meteo.com/v1/search',
+        params={'name': name, 'count': 1, 'language': 'cs'},
+        timeout=10,
+    )
+    results = resp.json().get('results', [])
+    if not results:
+        return None
+    return results[0]['latitude'], results[0]['longitude']
+
+
+def get_weather_forecast(city_name, date_str):
+    coords = geocode_city(city_name)
+    if not coords:
+        return None
+    lat, lon = coords
+    resp = requests.get(
+        'https://api.open-meteo.com/v1/forecast',
+        params={
+            'latitude': lat, 'longitude': lon,
+            'daily': 'temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code',
+            'timezone': 'Europe/Prague',
+        },
+        timeout=10,
+    )
+    data = resp.json()
+    daily = data.get('daily', {})
+    times = daily.get('time', [])
+    if date_str not in times:
+        return None
+    idx = times.index(date_str)
+    return {
+        'city': city_name,
+        'temp_min': daily['temperature_2m_min'][idx],
+        'temp_max': daily['temperature_2m_max'][idx],
+        'weather_code': daily['weather_code'][idx],
+        'precip_prob': daily['precipitation_probability_max'][idx],
+    }
+
+
+WMO_SEVERITY = {
+    0: 0, 1: 1, 2: 2, 3: 3, 45: 4, 48: 4,
+    51: 5, 53: 5, 55: 6, 56: 6, 57: 7,
+    61: 7, 63: 8, 65: 9, 66: 8, 67: 9,
+    71: 7, 73: 8, 75: 9, 77: 7,
+    80: 7, 81: 8, 82: 9, 85: 7, 86: 8,
+    95: 10, 96: 11, 99: 11,
+}
+
+
+def compose_weather_sms(etapa, weather_start, weather_end):
+    date_raw = etapa['date'] or ''
+    date_part = date_raw.split('(')[0].strip()
+    try:
+        dt = datetime.strptime(date_part, '%d.%m.%Y')
+        date_short = f'{dt.day}.{dt.month}.'
+    except ValueError:
+        date_short = date_part
+
+    ws, we = weather_start, weather_end
+    temp_min = min(ws['temp_min'], we['temp_min'])
+    temp_max = max(ws['temp_max'], we['temp_max'])
+    sev_s = WMO_SEVERITY.get(ws['weather_code'], 0)
+    sev_e = WMO_SEVERITY.get(we['weather_code'], 0)
+    better_code = ws['weather_code'] if sev_s <= sev_e else we['weather_code']
+    worse_code = ws['weather_code'] if sev_s >= sev_e else we['weather_code']
+    bad_threshold = 5
+    s_bad = sev_s >= bad_threshold
+    e_bad = sev_e >= bad_threshold
+    base_desc = WMO_DESCRIPTIONS.get(better_code, '?')
+    worse_desc = WMO_DESCRIPTIONS.get(worse_code, '?')
+
+    lines = ['Predpoved pocasi']
+    lines.append(f'Cykloexpedice Den {etapa["number"]} ({date_short})')
+    lines.append(f'{ws["city"]} - {we["city"]}')
+
+    if s_bad and e_bad:
+        lines.append(f'{worse_desc} na cele trase.')
+    elif s_bad and not e_bad:
+        lines.append(f'{base_desc}, {worse_desc.lower()} v okoli {ws["city"]}.')
+    elif e_bad and not s_bad:
+        lines.append(f'{base_desc}, {worse_desc.lower()} v okoli {we["city"]}.')
+    else:
+        lines.append(f'{base_desc}.')
+
+    lines.append(f'Teplota {temp_min:.0f}-{temp_max:.0f}°C.')
+    lines.append('Prijemnou jizdu!')
+    return strip_diacritics('\n'.join(lines))
+
+
+def send_sms(phone_number, message):
+    sid = os.environ.get('TWILIO_ACCOUNT_SID')
+    token = os.environ.get('TWILIO_AUTH_TOKEN')
+    from_number = os.environ.get('TWILIO_PHONE_NUMBER')
+    if not all([sid, token, from_number]):
+        print(f'[SMS STUB] To: {phone_number}\n{message}')
+        return False
+    from twilio.rest import Client  # noqa: E402
+    client = Client(sid, token)
+    client.messages.create(body=message, from_=from_number, to=phone_number)
+    return True
+
+
+def send_weather_sms_for_etapa(etapa_number):
+    with app.app_context():
+        db = get_db()
+        etapa = db.execute('SELECT * FROM etapy WHERE number = ?', (etapa_number,)).fetchone()
+        if not etapa or not etapa['route_start'] or not etapa['route_end']:
+            print(f'[SMS] Etapa {etapa_number}: missing route_start/route_end, skipping')
+            return 0
+        today = datetime.now(ZoneInfo('Europe/Prague')).strftime('%Y-%m-%d')
+        w_start = get_weather_forecast(etapa['route_start'], today)
+        w_end = get_weather_forecast(etapa['route_end'], today)
+        if not w_start or not w_end:
+            print(f'[SMS] Etapa {etapa_number}: weather fetch failed')
+            return 0
+        message = compose_weather_sms(etapa, w_start, w_end)
+        recipients = db.execute(
+            "SELECT phone FROM registrace WHERE status = 'approved' AND phone IS NOT NULL AND phone != ''",
+        ).fetchall()
+        sent = 0
+        for r in recipients:
+            phone = r['phone']
+            if not phone.startswith('+'):
+                phone = '+420' + phone
+            if send_sms(phone, message):
+                sent += 1
+            _time.sleep(1)
+        db.execute(
+            "INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)",
+            (f'sms_sent_etapa_{etapa_number}', datetime.now(ZoneInfo('Europe/Prague')).isoformat()),
+        )
+        db.commit()
+        print(f'[SMS] Etapa {etapa_number}: sent to {sent}/{len(recipients)} recipients')
+        return sent
 
 
 # ── Email template helpers ────────────────────────────────────
@@ -1205,6 +1379,8 @@ def _save_etapa(id):
         'elevation_up': request.form.get('elevation_up', ''),
         'elevation_down': request.form.get('elevation_down', ''),
         'route': request.form.get('route', ''),
+        'route_start': request.form.get('route_start', ''),
+        'route_end': request.form.get('route_end', ''),
         'waypoints': request.form.get('waypoints', ''),
         'description': request.form.get('description', ''),
         'map_link': request.form.get('map_link', ''),
@@ -1839,10 +2015,108 @@ def admin_settings():
     return render_template('admin/settings.html')
 
 
+# ── Admin: SMS ────────────────────────────────────────────────────
+
+@app.route('/admin/sms')
+@login_required
+def admin_sms():
+    db = get_db()
+    etapy = db.execute('SELECT * FROM etapy ORDER BY number').fetchall()
+    recipient_count = db.execute(
+        "SELECT COUNT(*) c FROM registrace WHERE status = 'approved' AND phone IS NOT NULL AND phone != ''",
+    ).fetchone()['c']
+    settings = get_settings()
+    sms_log = {}
+    for e in etapy:
+        val = settings.get(f'sms_sent_etapa_{e["number"]}')
+        if val:
+            sms_log[e['number']] = val
+    return render_template('admin/sms.html', etapy=etapy, recipient_count=recipient_count, sms_log=sms_log)
+
+
+@app.route('/admin/sms/preview/<int:etapa_number>')
+@login_required
+def admin_sms_preview(etapa_number):
+    db = get_db()
+    etapa = db.execute('SELECT * FROM etapy WHERE number = ?', (etapa_number,)).fetchone()
+    if not etapa:
+        flash('Etapa nenalezena.', 'error')
+        return redirect(url_for('admin_sms'))
+    if not etapa['route_start'] or not etapa['route_end']:
+        flash('Vyplňte počáteční a koncové místo v nastavení etapy.', 'error')
+        return redirect(url_for('admin_sms'))
+    today = datetime.now(ZoneInfo('Europe/Prague')).strftime('%Y-%m-%d')
+    w_start = get_weather_forecast(etapa['route_start'], today)
+    w_end = get_weather_forecast(etapa['route_end'], today)
+    error = None
+    message = None
+    if not w_start or not w_end:
+        error = 'Nepodařilo se načíst počasí. Zkontrolujte názvy míst.'
+    else:
+        message = compose_weather_sms(etapa, w_start, w_end)
+    recipient_count = db.execute(
+        "SELECT COUNT(*) c FROM registrace WHERE status = 'approved' AND phone IS NOT NULL AND phone != ''",
+    ).fetchone()['c']
+    return render_template(
+        'admin/sms_preview.html', etapa=etapa, message=message, error=error,
+        w_start=w_start, w_end=w_end, recipient_count=recipient_count,
+        message_len=len(message) if message else 0,
+    )
+
+
+@app.route('/admin/sms/send/<int:etapa_number>', methods=['POST'])
+@login_required
+def admin_sms_send(etapa_number):
+    sent = send_weather_sms_for_etapa(etapa_number)
+    if sent > 0:
+        flash(f'SMS odeslána {sent} příjemcům.', 'success')
+    else:
+        flash('Žádné SMS nebyly odeslány. Zkontrolujte nastavení etapy a Twilio.', 'error')
+    return redirect(url_for('admin_sms'))
+
+
 # ── Init & Run ────────────────────────────────────────────────────
+
+def _schedule_weather_sms():
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler
+    except ImportError:
+        print('[SMS] APScheduler not installed, skipping scheduled SMS')
+        return
+    scheduler = BackgroundScheduler(timezone='Europe/Prague')
+    db_conn = _connect_db()
+    try:
+        etapy = db_conn.execute(
+            "SELECT number, date FROM etapy WHERE route_start IS NOT NULL AND route_start != ''",
+        ).fetchall()
+        now = datetime.now(ZoneInfo('Europe/Prague'))
+        for e in etapy:
+            if not e['date']:
+                continue
+            date_part = e['date'].split('(')[0].strip()
+            try:
+                run_date = datetime.strptime(date_part, '%d.%m.%Y').replace(
+                    hour=7, minute=0, second=0, tzinfo=ZoneInfo('Europe/Prague'),
+                )
+            except ValueError:
+                continue
+            if run_date > now:
+                scheduler.add_job(
+                    send_weather_sms_for_etapa, 'date',
+                    run_date=run_date, args=[e['number']],
+                    id=f'weather_sms_{e["number"]}',
+                )
+                print(f'[SMS] Scheduled etapa {e["number"]} for {run_date}')
+    finally:
+        db_conn.close()
+    if scheduler.get_jobs():
+        scheduler.start()
+        print(f'[SMS] Scheduler started with {len(scheduler.get_jobs())} job(s)')
+
 
 if not os.environ.get('TESTING'):
     init_db()
+    _schedule_weather_sms()
 
 
 if __name__ == '__main__':

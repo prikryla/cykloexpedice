@@ -1,0 +1,88 @@
+{% extends "admin/base.html" %}
+{% block title %}SMS počasí{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold">SMS počasí</h1>
+    <span class="text-sm text-gray-500">
+        <i class="bi bi-people"></i> {{ recipient_count }} příjemců s telefonem
+    </span>
+</div>
+
+{% if not etapy %}
+<div class="bg-white rounded-xl shadow p-12 text-center text-gray-500">
+    <i class="bi bi-bicycle text-4xl mb-3 block"></i>
+    <p>Zatím žádné etapy.</p>
+</div>
+{% else %}
+<div class="bg-white rounded-xl shadow overflow-hidden mb-6">
+    <table class="w-full">
+        <thead class="bg-gray-50 text-left text-sm text-gray-500 uppercase">
+            <tr>
+                <th class="px-4 py-3">Etapa</th>
+                <th class="px-4 py-3">Datum</th>
+                <th class="px-4 py-3">Start</th>
+                <th class="px-4 py-3">Cíl</th>
+                <th class="px-4 py-3">Odesláno</th>
+                <th class="px-4 py-3 text-right">Akce</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+            {% for e in etapy %}
+            <tr class="hover:bg-gray-50">
+                <td class="px-4 py-3">
+                    <span class="inline-block w-8 h-8 rounded-full text-center leading-8 text-white font-bold text-sm"
+                          style="background-color: {{ e.color }}">{{ e.number }}</span>
+                    <span class="ml-2 font-medium">{{ e.title }}</span>
+                </td>
+                <td class="px-4 py-3 text-gray-500">{{ e.date or '–' }}</td>
+                <td class="px-4 py-3">
+                    {% if e.route_start %}
+                        <span class="text-green-700">{{ e.route_start }}</span>
+                    {% else %}
+                        <span class="text-red-400 text-sm">nenastaveno</span>
+                    {% endif %}
+                </td>
+                <td class="px-4 py-3">
+                    {% if e.route_end %}
+                        <span class="text-green-700">{{ e.route_end }}</span>
+                    {% else %}
+                        <span class="text-red-400 text-sm">nenastaveno</span>
+                    {% endif %}
+                </td>
+                <td class="px-4 py-3 text-gray-500 text-sm">
+                    {% if sms_log.get(e.number) %}
+                        <span class="text-green-600"><i class="bi bi-check-circle"></i> {{ sms_log[e.number][:16] }}</span>
+                    {% else %}
+                        –
+                    {% endif %}
+                </td>
+                <td class="px-4 py-3 text-right">
+                    <div class="flex items-center justify-end gap-2">
+                        {% if e.route_start and e.route_end %}
+                        <a href="{{ url_for('admin_sms_preview', etapa_number=e.number) }}"
+                           class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 text-sm font-medium rounded-lg hover:bg-blue-100 transition">
+                            <i class="bi bi-eye"></i> Náhled
+                        </a>
+                        {% endif %}
+                        <a href="{{ url_for('admin_etapa_edit', id=e.id) }}"
+                           class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-100 transition">
+                            <i class="bi bi-pencil"></i>
+                        </a>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
+    <i class="bi bi-info-circle"></i>
+    SMS se odesílají automaticky v 7:00 ráno v den konání etapy. Můžete je také odeslat ručně přes náhled.
+    {% if not recipient_count %}
+    <br><strong>Upozornění:</strong> Žádný schválený účastník nemá vyplněný telefon.
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}
