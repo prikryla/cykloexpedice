@@ -551,7 +551,7 @@ def compose_weather_sms(etapa, weather_start, weather_end):
     base_desc = WMO_DESCRIPTIONS.get(better_code, '?')
     worse_desc = WMO_DESCRIPTIONS.get(worse_code, '?')
 
-    lines = [f'Predpoved pocasi']
+    lines = ['Predpoved pocasi']
     lines.append(f'Cykloexpedice Den {etapa["number"]} ({date_short})')
     lines.append(f'{ws["city"]} - {we["city"]}')
 
