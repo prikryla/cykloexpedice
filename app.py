@@ -10,6 +10,7 @@ import time as _time
 
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.utils import make_msgid
 from datetime import datetime, date, timezone
 from functools import wraps
 from html import escape as html_escape
@@ -404,10 +405,20 @@ def send_email(to_email, subject, html_body, sender_username=None):
 
     def _send():
         try:
+            from_addr = smtp['from'] or 'info@cykloexpedice.cz'
+
+            plain_text = re.sub(r'<br\s*/?>', '\n', html_body)
+            plain_text = re.sub(r'<[^>]+>', '', plain_text)
+            plain_text = re.sub(r'\n{3,}', '\n\n', plain_text).strip()
+
             msg = MIMEMultipart('alternative')
             msg['Subject'] = subject
-            msg['From'] = smtp['from'] or 'info@cykloexpedice.cz'
+            msg['From'] = from_addr
             msg['To'] = to_email
+            msg['Message-ID'] = make_msgid(domain='cykloexpedice.cz')
+            msg['List-Unsubscribe'] = '<mailto:info@cykloexpedice.cz?subject=Unsubscribe>'
+            msg['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click'
+            msg.attach(MIMEText(plain_text, 'plain', 'utf-8'))
             msg.attach(MIMEText(html_body, 'html', 'utf-8'))
 
             port = int(smtp['port'] or 587)
@@ -627,12 +638,7 @@ def send_weather_sms_for_etapa(etapa_number):
 
 # ── Email template helpers ────────────────────────────────────
 
-_logo_path = os.path.join(os.path.dirname(__file__), 'static', 'logo-email.png')
-if os.path.exists(_logo_path):
-    with open(_logo_path, 'rb') as _f:
-        _LOGO_BASE64 = base64.b64encode(_f.read()).decode()
-else:
-    _LOGO_BASE64 = ''
+_EMAIL_LOGO_URL = 'https://cykloexpedice.cz/static/logo-email.png'
 
 
 def render_email_layout(body_html, settings):
@@ -659,7 +665,7 @@ def render_email_layout(body_html, settings):
 <!-- Header -->
 <tr><td align="center" bgcolor="#1c1c1b" style="background-color:#1c1c1b;padding:36px 40px 28px;">
   <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center">
-    <img src="data:image/png;base64,{_LOGO_BASE64}" alt="{event_name}" width="220" style="display:block;max-width:220px;width:100%;height:auto;">
+    <img src="{_EMAIL_LOGO_URL}" alt="{event_name}" width="220" style="display:block;max-width:220px;width:100%;height:auto;">
   </td></tr>
   <tr><td align="center" style="padding-top:12px;">
     <p style="font-family:'Montserrat',Arial,Helvetica,sans-serif;color:#6b7280;font-size:13px;margin:0;letter-spacing:2px;text-transform:uppercase;">{event_year}</p>

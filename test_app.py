@@ -2181,6 +2181,52 @@ class TestEmailSending:
             db.commit()
             send_email('test@test.cz', 'Test', '<p>body</p>')
 
+    def test_email_has_plain_text_and_headers(self, app):
+        import app as flask_app
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute("INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)",
+                       ('smtp_host_adam', 'smtp.resend.com'))
+            db.execute("INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)",
+                       ('smtp_port_adam', '465'))
+            db.execute("INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)",
+                       ('smtp_user_adam', 'resend'))
+            db.execute("INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)",
+                       ('smtp_password_adam', 'fake'))
+            db.execute("INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)",
+                       ('smtp_from_adam', 'info@cykloexpedice.cz'))
+            db.commit()
+
+        captured = {}
+
+        def mock_send(self_srv, msg):
+            captured['msg'] = msg
+
+        with patch('smtplib.SMTP_SSL') as mock_smtp:
+            instance = MagicMock()
+            mock_smtp.return_value.__enter__ = MagicMock(return_value=instance)
+            mock_smtp.return_value.__exit__ = MagicMock(return_value=False)
+            instance.send_message = lambda msg: captured.update({'msg': msg})
+
+            with app.app_context():
+                flask_app.send_email('test@test.cz', 'Test Subject', '<p>Hello <b>world</b></p>')
+
+            import time
+            time.sleep(0.5)
+
+        msg = captured.get('msg')
+        if msg:
+            payloads = msg.get_payload()
+            types = [p.get_content_type() for p in payloads]
+            assert 'text/plain' in types
+            assert 'text/html' in types
+            plain_part = [p for p in payloads if p.get_content_type() == 'text/plain'][0]
+            plain_text = plain_part.get_payload(decode=True).decode()
+            assert 'Hello' in plain_text
+            assert '<p>' not in plain_text
+            assert msg['List-Unsubscribe'] is not None
+            assert 'cykloexpedice.cz' in msg['Message-ID']
+
 
 # ── YouTube embed converter tests ──────────────────────────────────
 
