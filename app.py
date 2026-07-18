@@ -29,7 +29,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from vokativ import vokativ as _vokativ
 
-VERSION = '1.2.0'
+VERSION = '1.3.0'
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
