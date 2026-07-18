@@ -708,53 +708,140 @@ class TestAdminBulkDelete:
 
 
 class TestPayments:
-    def _create_approved_registration(self, admin_client, app):
+    def _create_approved_registrations(self, app, count=1):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            ids = []
+            for i in range(count):
+                db.execute(
+                    "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
+                    (f'User {i}', f'user{i}@test.cz'))
+                ids.append(db.execute("SELECT last_insert_rowid()").fetchone()[0])
+            db.commit()
+            return ids
+
+    def test_bulk_send_selected(self, admin_client, app):
+        ids = self._create_approved_registrations(app, 2)
+        with patch('app.send_bulk_emails') as mock_bulk:
+            r = admin_client.post('/admin/registrace/bulk-send-payment',
+                                  data={'ids': [str(i) for i in ids], 'amount': '3500'},
+                                  follow_redirects=True)
+        assert r.status_code == 200
+        mock_bulk.assert_called_once()
+        email_items = mock_bulk.call_args[0][0]
+        assert len(email_items) == 2
+
+    def test_bulk_send_skips_non_approved(self, admin_client, app):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute("INSERT INTO registrace (name, email, status) VALUES (?, ?, 'pending')",
+                       ('Pending', 'p@test.cz'))
+            pending_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+            db.commit()
+
+        with patch('app.send_bulk_emails') as mock_bulk:
+            r = admin_client.post('/admin/registrace/bulk-send-payment',
+                                  data={'ids': [str(pending_id)], 'amount': '3500'},
+                                  follow_redirects=True)
+        assert r.status_code == 200
+        mock_bulk.assert_not_called()
+
+    def test_bulk_send_no_ids_selected(self, admin_client):
+        r = admin_client.post('/admin/registrace/bulk-send-payment',
+                              data={'amount': '3500'},
+                              follow_redirects=True)
+        assert r.status_code == 200
+        assert 'vybrány' in r.data.decode().lower()
+
+    def test_bulk_send_no_amount(self, admin_client, app):
+        ids = self._create_approved_registrations(app)
+        with patch('app.send_bulk_emails') as mock_bulk:
+            r = admin_client.post('/admin/registrace/bulk-send-payment',
+                                  data={'ids': [str(ids[0])]},
+                                  follow_redirects=True)
+        assert r.status_code == 200
+        mock_bulk.assert_not_called()
+        assert 'částka' in r.data.decode().lower()
+
+    def test_bulk_send_invalid_amount(self, admin_client, app):
+        ids = self._create_approved_registrations(app)
+        with patch('app.send_bulk_emails') as mock_bulk:
+            r = admin_client.post('/admin/registrace/bulk-send-payment',
+                                  data={'ids': [str(ids[0])], 'amount': 'abc'},
+                                  follow_redirects=True)
+        assert r.status_code == 200
+        mock_bulk.assert_not_called()
+
+    def test_bulk_send_zero_amount(self, admin_client, app):
+        ids = self._create_approved_registrations(app)
+        with patch('app.send_bulk_emails') as mock_bulk:
+            r = admin_client.post('/admin/registrace/bulk-send-payment',
+                                  data={'ids': [str(ids[0])], 'amount': '0'},
+                                  follow_redirects=True)
+        assert r.status_code == 200
+        mock_bulk.assert_not_called()
+
+    def test_bulk_send_sets_unique_variable_symbols(self, admin_client, app):
+        ids = self._create_approved_registrations(app, 2)
+        with patch('app.send_bulk_emails'):
+            admin_client.post('/admin/registrace/bulk-send-payment',
+                              data={'ids': [str(i) for i in ids], 'amount': '3500'})
+
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            rows = db.execute(
+                "SELECT variable_symbol FROM registrace WHERE status = 'approved'"
+            ).fetchall()
+            symbols = [r['variable_symbol'] for r in rows]
+            assert len(set(symbols)) == len(symbols)
+
+    def test_bulk_send_stores_amount(self, admin_client, app):
+        ids = self._create_approved_registrations(app)
+        with patch('app.send_bulk_emails'):
+            admin_client.post('/admin/registrace/bulk-send-payment',
+                              data={'ids': [str(ids[0])], 'amount': '5000'})
+
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            row = db.execute('SELECT payment_amount FROM registrace WHERE id = ?',
+                             (ids[0],)).fetchone()
+            assert row['payment_amount'] == 5000.0
+
+    def test_bulk_send_no_iban_configured(self, admin_client, app):
+        ids = self._create_approved_registrations(app)
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            db.execute("INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)",
+                       ('bank_iban', ''))
+            db.commit()
+
+        r = admin_client.post('/admin/registrace/bulk-send-payment',
+                              data={'ids': [str(ids[0])], 'amount': '3500'},
+                              follow_redirects=True)
+        assert 'iban' in r.data.decode().lower()
+
+    def test_payment_note_format(self, admin_client, app):
         with app.app_context():
             import app as flask_app
             db = flask_app.get_db()
             db.execute(
                 "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
                 ('Jan Novák', 'jan@test.cz'))
+            reg_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
             db.commit()
-            row = db.execute("SELECT id FROM registrace WHERE name = 'Jan Novák'").fetchone()
-            return row['id']
 
-    def test_send_payment_qr(self, admin_client, app):
-        reg_id = self._create_approved_registration(admin_client, app)
-        with patch('app.send_email') as mock_email:
-            r = admin_client.post(f'/admin/registrace/{reg_id}/send-payment',
-                                  follow_redirects=True)
-        assert r.status_code == 200
-        assert 'QR' in r.data.decode()
-        mock_email.assert_called_once()
-
-    def test_send_payment_qr_unapproved_fails(self, admin_client, app):
-        with app.app_context():
-            import app as flask_app
-            db = flask_app.get_db()
-            db.execute("INSERT INTO registrace (name, email, status) VALUES (?, ?, 'pending')",
-                       ('Pending User', 'p@t.cz'))
-            db.commit()
-            row = db.execute("SELECT id FROM registrace WHERE name = 'Pending User'").fetchone()
-            reg_id = row['id']
-
-        r = admin_client.post(f'/admin/registrace/{reg_id}/send-payment',
-                              follow_redirects=True)
-        assert 'schválených' in r.data.decode().lower()
-
-    def test_send_payment_no_email_fails(self, admin_client, app):
-        with app.app_context():
-            import app as flask_app
-            db = flask_app.get_db()
-            db.execute("INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
-                       ('No Email', ''))
-            db.commit()
-            row = db.execute("SELECT id FROM registrace WHERE name = 'No Email'").fetchone()
-            reg_id = row['id']
-
-        r = admin_client.post(f'/admin/registrace/{reg_id}/send-payment',
-                              follow_redirects=True)
-        assert 'e-mail' in r.data.decode().lower()
+        with patch('app.send_bulk_emails'), \
+             patch('app.generate_payment_qr') as mock_qr:
+            mock_qr.return_value = 'fakebase64'
+            admin_client.post('/admin/registrace/bulk-send-payment',
+                              data={'ids': [str(reg_id)], 'amount': '3500'})
+            call_args = mock_qr.call_args
+            assert call_args[0][3] == 'WACHAU_Jan_Novák'
 
     def test_check_payments_route(self, admin_client):
         with patch('app.check_fio_payments'):
@@ -763,139 +850,20 @@ class TestPayments:
         assert r.status_code == 200
         assert 'zkontrolován' in r.data.decode().lower()
 
-    def test_payment_note_format(self, admin_client, app):
-        """Verify payment note is WACHAU_firstname_lastname."""
-        reg_id = self._create_approved_registration(admin_client, app)
-        with patch('app.send_email'), \
-             patch('app.generate_payment_qr') as mock_qr:
-            mock_qr.return_value = 'fakebase64'
-            admin_client.post(f'/admin/registrace/{reg_id}/send-payment')
-            call_args = mock_qr.call_args
-            assert call_args[0][3] == 'WACHAU_Jan_Novák'
-
-
-class TestBulkSendPayment:
-    def test_bulk_send_payment_sends_to_all_approved(self, admin_client, app):
-        with app.app_context():
-            import app as flask_app
-            db = flask_app.get_db()
-            db.execute(
-                "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
-                ('User One', 'one@test.cz'))
-            db.execute(
-                "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
-                ('User Two', 'two@test.cz'))
-            db.commit()
-
-        with patch('app.send_bulk_emails') as mock_bulk:
-            r = admin_client.post('/admin/registrace/bulk-send-payment',
-                                  follow_redirects=True)
-        assert r.status_code == 200
-        mock_bulk.assert_called_once()
-        email_items = mock_bulk.call_args[0][0]
-        assert len(email_items) == 2
-        recipients = {item[0] for item in email_items}
-        assert recipients == {'one@test.cz', 'two@test.cz'}
-        assert '2' in r.data.decode()
-
-    def test_bulk_send_skips_already_sent(self, admin_client, app):
-        with app.app_context():
-            import app as flask_app
-            db = flask_app.get_db()
-            db.execute(
-                "INSERT INTO registrace (name, email, status, payment_status) "
-                "VALUES (?, ?, 'approved', 'pending')",
-                ('Already Sent', 'sent@test.cz'))
-            db.execute(
-                "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
-                ('Not Sent', 'new@test.cz'))
-            db.commit()
-
-        with patch('app.send_bulk_emails') as mock_bulk:
-            r = admin_client.post('/admin/registrace/bulk-send-payment',
-                                  follow_redirects=True)
-        assert r.status_code == 200
-        mock_bulk.assert_called_once()
-        email_items = mock_bulk.call_args[0][0]
-        assert len(email_items) == 1
-        assert email_items[0][0] == 'new@test.cz'
-
-    def test_bulk_send_skips_non_approved(self, admin_client, app):
-        with app.app_context():
-            import app as flask_app
-            db = flask_app.get_db()
-            db.execute(
-                "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'pending')",
-                ('Pending', 'p@test.cz'))
-            db.execute(
-                "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'denied')",
-                ('Denied', 'd@test.cz'))
-            db.commit()
-
-        with patch('app.send_bulk_emails') as mock_bulk:
-            r = admin_client.post('/admin/registrace/bulk-send-payment',
-                                  follow_redirects=True)
-        assert r.status_code == 200
-        mock_bulk.assert_not_called()
-
-    def test_bulk_send_no_registrations(self, admin_client):
-        r = admin_client.post('/admin/registrace/bulk-send-payment',
-                              follow_redirects=True)
-        assert r.status_code == 200
-        assert 'ádné' in r.data.decode()
-
-    def test_bulk_send_sets_unique_variable_symbols(self, admin_client, app):
-        with app.app_context():
-            import app as flask_app
-            db = flask_app.get_db()
-            db.execute(
-                "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
-                ('A User', 'a@test.cz'))
-            db.execute(
-                "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
-                ('B User', 'b@test.cz'))
-            db.commit()
-
-        with patch('app.send_bulk_emails'):
-            admin_client.post('/admin/registrace/bulk-send-payment')
-
-        with app.app_context():
-            db = flask_app.get_db()
-            rows = db.execute(
-                "SELECT variable_symbol FROM registrace WHERE status = 'approved'"
-            ).fetchall()
-            symbols = [r['variable_symbol'] for r in rows]
-            assert len(set(symbols)) == len(symbols)
-
     def test_bulk_send_requires_login(self, client):
         r = client.post('/admin/registrace/bulk-send-payment')
         assert r.status_code == 302
         assert 'login' in r.headers['Location']
 
-    def test_bulk_send_button_present(self, admin_client):
+    def test_qr_modal_present_in_template(self, admin_client):
         r = admin_client.get('/admin/registrace')
-        assert 'bulk-send-payment' in r.data.decode()
+        html = r.data.decode()
+        assert 'qr-modal' in html
+        assert 'openQrModal' in html
+        assert 'bulk-send-payment' in html
 
 
 class TestBulkSendPaymentDelay:
-    def test_bulk_send_uses_delay_between_emails(self, admin_client, app):
-        with app.app_context():
-            import app as flask_app
-            db = flask_app.get_db()
-            db.execute(
-                "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
-                ('User A', 'a@test.cz'))
-            db.execute(
-                "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
-                ('User B', 'b@test.cz'))
-            db.commit()
-
-        with patch('app.send_bulk_emails') as mock_bulk:
-            admin_client.post('/admin/registrace/bulk-send-payment')
-
-        mock_bulk.assert_called_once()
-        email_items = mock_bulk.call_args[0][0]
-        assert len(email_items) == 2
 
     def test_send_bulk_emails_dispatches_with_delay(self, app):
         import app as flask_app
@@ -923,85 +891,6 @@ class TestBulkSendPaymentDelay:
 
         assert len(sent) == 3
         assert sleep_calls.count(3) == 2
-
-
-class TestSendPaymentCustomAmount:
-    def _create_approved_reg(self, app):
-        with app.app_context():
-            import app as flask_app
-            db = flask_app.get_db()
-            db.execute(
-                "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
-                ('Jan Novak', 'jan@test.cz'))
-            db.commit()
-            return db.execute("SELECT id FROM registrace ORDER BY id DESC LIMIT 1").fetchone()['id']
-
-    def test_send_with_custom_amount(self, admin_client, app):
-        reg_id = self._create_approved_reg(app)
-
-        with patch('app.send_email') as mock_email:
-            r = admin_client.post(f'/admin/registrace/{reg_id}/send-payment',
-                                  data={'amount': '5000'},
-                                  follow_redirects=True)
-        assert r.status_code == 200
-        mock_email.assert_called_once()
-
-        with app.app_context():
-            import app as flask_app
-            db = flask_app.get_db()
-            row = db.execute('SELECT payment_amount FROM registrace WHERE id = ?',
-                             (reg_id,)).fetchone()
-            assert row['payment_amount'] == 5000.0
-
-    def test_send_with_default_amount(self, admin_client, app):
-        reg_id = self._create_approved_reg(app)
-
-        with patch('app.send_email') as mock_email:
-            r = admin_client.post(f'/admin/registrace/{reg_id}/send-payment',
-                                  follow_redirects=True)
-        assert r.status_code == 200
-        mock_email.assert_called_once()
-
-        with app.app_context():
-            import app as flask_app
-            db = flask_app.get_db()
-            row = db.execute('SELECT payment_amount FROM registrace WHERE id = ?',
-                             (reg_id,)).fetchone()
-            assert row['payment_amount'] == 3500.0
-
-    def test_send_with_invalid_amount(self, admin_client, app):
-        reg_id = self._create_approved_reg(app)
-
-        with patch('app.send_email') as mock_email:
-            r = admin_client.post(f'/admin/registrace/{reg_id}/send-payment',
-                                  data={'amount': 'abc'},
-                                  follow_redirects=True)
-        assert r.status_code == 200
-        mock_email.assert_not_called()
-        assert 'Neplatná' in r.data.decode()
-
-    def test_send_with_zero_amount(self, admin_client, app):
-        reg_id = self._create_approved_reg(app)
-
-        with patch('app.send_email') as mock_email:
-            r = admin_client.post(f'/admin/registrace/{reg_id}/send-payment',
-                                  data={'amount': '0'},
-                                  follow_redirects=True)
-        assert r.status_code == 200
-        mock_email.assert_not_called()
-
-    def test_qr_modal_present_in_template(self, admin_client, app):
-        with app.app_context():
-            import app as flask_app
-            db = flask_app.get_db()
-            db.execute(
-                "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
-                ('Test User', 'test@test.cz'))
-            db.commit()
-        r = admin_client.get('/admin/registrace')
-        html = r.data.decode()
-        assert 'qr-modal' in html
-        assert 'openQrModal' in html
 
 
 class TestCheckFioPayments:
@@ -2131,27 +2020,6 @@ class TestRegistrationCapacity:
 
 
 class TestRegistrationEdgeCases:
-    def test_send_payment_nonexistent_returns_404(self, admin_client):
-        r = admin_client.post('/admin/registrace/9999/send-payment')
-        assert r.status_code == 404
-
-    def test_send_payment_no_iban_configured(self, admin_client, app):
-        with app.app_context():
-            import app as flask_app
-            db = flask_app.get_db()
-            db.execute("INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
-                       ('Test', 'test@test.cz'))
-            db.commit()
-            row = db.execute("SELECT id FROM registrace WHERE name = 'Test'").fetchone()
-            reg_id = row['id']
-            db.execute("INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)",
-                       ('bank_iban', ''))
-            db.commit()
-
-        r = admin_client.post(f'/admin/registrace/{reg_id}/send-payment',
-                              follow_redirects=True)
-        assert 'nastaveny' in r.data.decode().lower()
-
     def test_deny_nonexistent_registration_returns_404(self, admin_client):
         r = admin_client.get('/admin/registrace/9999/deny')
         assert r.status_code == 404
