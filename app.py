@@ -1339,6 +1339,8 @@ def admin_dashboard():
         'aktuality': db.execute('SELECT COUNT(*) c FROM aktuality').fetchone()['c'],
         'registrace': db.execute("SELECT COUNT(*) c FROM registrace WHERE status = 'approved'").fetchone()['c'],
         'ubytovani': db.execute('SELECT COUNT(*) c FROM ubytovani').fetchone()['c'],
+        'payment_pending': db.execute("SELECT COUNT(*) c FROM registrace WHERE payment_status = 'pending'").fetchone()['c'],
+        'payment_paid': db.execute("SELECT COUNT(*) c FROM registrace WHERE payment_status = 'paid'").fetchone()['c'],
     }
     return render_template('admin/dashboard.html', stats=stats)
 
@@ -1759,98 +1761,42 @@ def admin_registrace_delete(id):
     return redirect(url_for('admin_registrace'))
 
 
-@app.route('/admin/registrace/<int:id>/send-payment', methods=['POST'])
-@login_required
-def admin_registrace_send_payment(id):
-    db = get_db()
-    reg = db.execute('SELECT * FROM registrace WHERE id = ?', (id,)).fetchone()
-    if not reg:
-        abort(404)
-    if reg['status'] != 'approved':
-        flash('Platební QR lze odeslat pouze u schválených registrací.', 'error')
-        return redirect(url_for('admin_registrace'))
-    if not reg['email']:
-        flash('Registrace nemá zadaný e-mail.', 'error')
-        return redirect(url_for('admin_registrace'))
-
-    settings = get_settings()
-    custom_amount = request.form.get('amount', '').strip()
-    if custom_amount:
-        try:
-            amount = float(custom_amount)
-            if amount <= 0:
-                raise ValueError
-        except ValueError:
-            flash('Neplatná částka.', 'error')
-            return redirect(url_for('admin_registrace'))
-    else:
-        amount = float(settings.get('payment_amount', '0'))
-    iban = settings.get('bank_iban', '')
-    bank_account = settings.get('bank_account', '')
-
-    if not iban or not amount:
-        flash('Nejsou nastaveny platební údaje (IBAN, částka). Zkontrolujte nastavení.', 'error')
-        return redirect(url_for('admin_registrace'))
-
-    vs = reg['variable_symbol'] or reg['id']
-    event_name = settings.get('event_name', 'Cykloexpedice')
-    event_year = settings.get('event_year', '')
-    name_parts = reg['name'].strip().split()
-    payment_note = 'WACHAU_' + '_'.join(name_parts)
-
-    # Generate QR code
-    qr_b64 = generate_payment_qr(iban, amount, vs, payment_note)
-
-    # Update registration
-    db.execute(
-        "UPDATE registrace SET variable_symbol = ?, payment_status = 'pending', "
-        "payment_amount = ?, qr_sent_at = ? WHERE id = ?",
-        (vs, amount, datetime.now(), id)
-    )
-    db.commit()
-
-    # Send payment email
-    qr_html = f'<p style="text-align: center; margin: 25px 0;"><img src="data:image/png;base64,{qr_b64}" alt="QR platba" style="width: 250px; height: 250px;"></p>'
-    tpl_vars = {
-        'name': reg['name'],
-        'event_name': event_name,
-        'event_year': event_year,
-        'bank_account': bank_account,
-        'amount': f'{amount:.0f}',
-        'vs': str(vs),
-        'payment_note': payment_note,
-        'qr_code': qr_html,
-        'contact_name_1': settings.get('contact_name_1', ''),
-        'contact_name_2': settings.get('contact_name_2', ''),
-        'contact_email': settings.get('contact_email', ''),
-    }
-    subject, html = render_email_template('email_payment', tpl_vars, settings)
-    send_email(reg['email'], subject, html, sender_username=session.get('admin_username'))
-
-    flash(f'Platební QR kód odeslán na {reg["email"]} (VS: {vs}).', 'success')
-    return redirect(url_for('admin_registrace'))
-
-
 @app.route('/admin/registrace/bulk-send-payment', methods=['POST'])
 @login_required
 def admin_registrace_bulk_send_payment():
     db = get_db()
-    regs = db.execute(
-        "SELECT * FROM registrace WHERE status = 'approved' AND email != '' "
-        "AND email IS NOT NULL AND (payment_status = 'none' OR payment_status IS NULL)"
-    ).fetchall()
+    selected_ids = request.form.getlist('ids')
+    amount_str = request.form.get('amount', '').strip()
 
-    if not regs:
-        flash('Žádné schválené registrace k odeslání QR.', 'info')
+    if not selected_ids:
+        flash('Nejsou vybrány žádné registrace.', 'error')
+        return redirect(url_for('admin_registrace'))
+
+    try:
+        amount = float(amount_str)
+        if amount <= 0:
+            raise ValueError
+    except (ValueError, TypeError):
+        flash('Neplatná částka.', 'error')
         return redirect(url_for('admin_registrace'))
 
     settings = get_settings()
-    amount = float(settings.get('payment_amount', '0'))
     iban = settings.get('bank_iban', '')
     bank_account = settings.get('bank_account', '')
 
-    if not iban or not amount:
-        flash('Nejsou nastaveny platební údaje (IBAN, částka). Zkontrolujte nastavení.', 'error')
+    if not iban:
+        flash('Není nastaven IBAN. Zkontrolujte nastavení.', 'error')
+        return redirect(url_for('admin_registrace'))
+
+    placeholders = ','.join('?' * len(selected_ids))
+    regs = db.execute(
+        f"SELECT * FROM registrace WHERE id IN ({placeholders}) "
+        "AND status = 'approved' AND email != '' AND email IS NOT NULL",
+        selected_ids,
+    ).fetchall()
+
+    if not regs:
+        flash('Žádné schválené registrace s e-mailem ve výběru.', 'info')
         return redirect(url_for('admin_registrace'))
 
     event_name = settings.get('event_name', 'Cykloexpedice')
@@ -1867,7 +1813,7 @@ def admin_registrace_bulk_send_payment():
         db.execute(
             "UPDATE registrace SET variable_symbol = ?, payment_status = 'pending', "
             "payment_amount = ?, qr_sent_at = ? WHERE id = ?",
-            (vs, amount, datetime.now(), reg['id'])
+            (vs, amount, datetime.now(), reg['id']),
         )
 
         qr_html = f'<p style="text-align: center; margin: 25px 0;"><img src="data:image/png;base64,{qr_b64}" alt="QR platba" style="width: 250px; height: 250px;"></p>'
@@ -2011,7 +1957,7 @@ def admin_settings():
         keys = ['event_name', 'event_year', 'event_days', 'event_km',
                 'event_elevation', 'event_dates', 'contact_name_1',
                 'contact_name_2', 'contact_email', 'photos_link', 'photos_text',
-                'max_capacity', 'payment_amount', 'bank_account', 'bank_iban']
+                'max_capacity', 'bank_account', 'bank_iban']
         for key in keys:
             val = request.form.get(key, '')
             db.execute('INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)', (key, val))

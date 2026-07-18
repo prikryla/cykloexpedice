@@ -11,12 +11,11 @@
                 onclick="openBulkDeleteModal()">
             <i class="bi bi-trash3"></i> <span id="bulk-delete-label">Smazat vybrané</span>
         </button>
-        <form method="POST" action="{{ url_for('admin_registrace_bulk_send_payment') }}" onsubmit="return confirm('Odeslat platební QR všem schváleným registracím, které ještě nemají QR?');">
-            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="inline-flex items-center gap-2 px-3 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition">
-                <i class="bi bi-qr-code"></i> Odeslat QR všem
-            </button>
-        </form>
+        <button type="button" id="bulk-qr-btn" disabled
+                class="inline-flex items-center gap-2 px-3 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                onclick="openQrModal()">
+            <i class="bi bi-qr-code"></i> <span id="bulk-qr-label">Odeslat QR vybraným</span>
+        </button>
         <form method="POST" action="{{ url_for('admin_check_payments') }}">
             <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="inline-flex items-center gap-2 px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition">
@@ -63,16 +62,30 @@
     </div>
 </form>
 
-{% if registrace %}
+{% set unsent = registrace|selectattr('payment_status', 'none')|list + registrace|rejectattr('payment_status')|list %}
+{% set sent_pending = registrace|selectattr('payment_status', 'equalto', 'pending')|list %}
+{% set sent_paid = registrace|selectattr('payment_status', 'equalto', 'paid')|list %}
+{% set sent = sent_pending + sent_paid %}
+
+{# Deduplicate: unsent should exclude items that appear in sent #}
+{% set sent_ids = sent|map(attribute='id')|list %}
+{% set unsent_clean = [] %}
+{% for r in registrace %}
+    {% if r.payment_status != 'pending' and r.payment_status != 'paid' %}
+        {% if unsent_clean.append(r) %}{% endif %}
+    {% endif %}
+{% endfor %}
+
+{% if unsent_clean %}
 <form id="bulk-delete-form" method="POST" action="{{ url_for('admin_registrace_bulk_delete') }}">
     <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
 </form>
 
 <!-- ═══ MOBILE: Card layout ═══ -->
 <div class="lg:hidden space-y-3">
-    {% for r in registrace %}
+    {% for r in unsent_clean %}
     {% if not status_filter %}
-    {% set prev_status = registrace[loop.index0 - 1].status if loop.index0 > 0 else None %}
+    {% set prev_status = unsent_clean[loop.index0 - 1].status if loop.index0 > 0 else None %}
     {% if prev_status != r.status and not loop.first %}
     <div class="px-2 pt-2">
         <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">
@@ -123,12 +136,6 @@
         {% endif %}
         <!-- Row 4: meta info -->
         <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-400 pl-8 mb-3">
-            {% if r.variable_symbol %}<span class="font-mono">VS {{ r.variable_symbol }}</span>{% endif %}
-            {% if r.payment_status == 'paid' %}
-            <span class="px-2 py-0.5 bg-green-100 text-green-700 rounded-full font-semibold">Zaplaceno</span>
-            {% elif r.payment_status == 'pending' %}
-            <span class="px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded-full font-semibold">Čeká na platbu</span>
-            {% endif %}
             <span>{{ r.created_at|prague_time }}</span>
         </div>
         <!-- Row 5: actions -->
@@ -144,13 +151,6 @@
                class="inline-flex items-center gap-1 px-3 py-1.5 bg-amber-50 text-amber-700 text-sm font-medium rounded-lg hover:bg-amber-100 transition">
                 <i class="bi bi-x-circle"></i> Zamítnout
             </a>
-            {% endif %}
-            {% if r.status == 'approved' and r.payment_status != 'paid' %}
-            <button type="button"
-                    class="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 text-sm font-medium rounded-lg hover:bg-blue-100 transition"
-                    onclick="openQrModal('{{ url_for('admin_registrace_send_payment', id=r.id) }}', '{{ r.name|e }}')">
-                <i class="bi bi-qr-code"></i> {% if r.payment_status == 'pending' %}Znovu QR{% else %}Odeslat QR{% endif %}
-            </button>
             {% endif %}
             <form method="POST" action="{{ url_for('admin_registrace_delete', id=r.id) }}" class="inline">
                 <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
@@ -179,19 +179,17 @@
                     <th class="px-4 py-3">E-mail</th>
                     <th class="px-4 py-3">Telefon</th>
                     <th class="px-4 py-3">Poznámka</th>
-                    <th class="px-4 py-3">VS</th>
-                    <th class="px-4 py-3">Platba</th>
                     <th class="px-4 py-3">Datum</th>
                     <th class="px-4 py-3 text-right">Akce</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-gray-100">
-                {% for r in registrace %}
+                {% for r in unsent_clean %}
                 {% if not status_filter %}
-                {% set prev_status = registrace[loop.index0 - 1].status if loop.index0 > 0 else None %}
+                {% set prev_status = unsent_clean[loop.index0 - 1].status if loop.index0 > 0 else None %}
                 {% if prev_status != r.status and not loop.first %}
                 <tr>
-                    <td colspan="10" class="px-4 py-2 bg-gray-100">
+                    <td colspan="8" class="px-4 py-2 bg-gray-100">
                         <span class="text-xs font-semibold text-gray-500 uppercase tracking-wider">
                             {% if r.status == 'approved' %}Schválené{% elif r.status == 'denied' %}Zamítnuté{% endif %}
                         </span>
@@ -228,16 +226,6 @@
                         <div class="mt-1 text-xs text-red-500"><i class="bi bi-chat-left-text"></i> {{ r.admin_note }}</div>
                         {% endif %}
                     </td>
-                    <td class="px-4 py-3 text-gray-500 text-sm font-mono">{{ r.variable_symbol or '–' }}</td>
-                    <td class="px-4 py-3">
-                        {% if r.payment_status == 'paid' %}
-                        <span class="px-2.5 py-1 bg-green-100 text-green-700 text-xs rounded-full font-semibold">Zaplaceno</span>
-                        {% elif r.payment_status == 'pending' %}
-                        <span class="px-2.5 py-1 bg-yellow-100 text-yellow-700 text-xs rounded-full font-semibold" title="QR odesláno: {{ r.qr_sent_at|prague_time }}">Čeká na platbu</span>
-                        {% else %}
-                        <span class="px-2.5 py-1 bg-gray-100 text-gray-500 text-xs rounded-full">–</span>
-                        {% endif %}
-                    </td>
                     <td class="px-4 py-3 text-gray-500 text-sm">{{ r.created_at|prague_time }}</td>
                     <td class="px-4 py-3 text-right whitespace-nowrap">
                         <div class="flex items-center justify-end gap-2">
@@ -252,13 +240,6 @@
                                class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-700 text-sm font-medium rounded-lg hover:bg-amber-100 transition" title="Zamítnout">
                                 <i class="bi bi-x-circle"></i> Zamítnout
                             </a>
-                            {% endif %}
-                            {% if r.status == 'approved' and r.payment_status != 'paid' %}
-                            <button type="button"
-                                    class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 text-sm font-medium rounded-lg hover:bg-blue-100 transition" title="Odeslat platební QR"
-                                    onclick="openQrModal('{{ url_for('admin_registrace_send_payment', id=r.id) }}', '{{ r.name|e }}')">
-                                <i class="bi bi-qr-code"></i> {% if r.payment_status == 'pending' %}Znovu QR{% else %}Odeslat QR{% endif %}
-                            </button>
                             {% endif %}
                             <form method="POST" action="{{ url_for('admin_registrace_delete', id=r.id) }}" class="inline">
                     <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
@@ -276,10 +257,108 @@
         </table>
     </div>
 </div>
-{% else %}
+{% elif not sent %}
 <div class="bg-white rounded-xl shadow p-12 text-center text-gray-500">
     <i class="bi bi-people text-4xl mb-3 block"></i>
     <p>{% if query %}Žádné výsledky pro "{{ query }}".{% else %}Zatím žádné registrace.{% endif %}</p>
+</div>
+{% endif %}
+
+{% if sent %}
+<!-- ═══ SENT PAYMENT SECTION ═══ -->
+<div class="mt-10">
+    <h2 class="text-lg font-bold text-gray-700 mb-4">
+        <i class="bi bi-credit-card text-green-600"></i> Platební údaje – odesláno ({{ sent|length }})
+    </h2>
+
+    <!-- Mobile cards -->
+    <div class="lg:hidden space-y-3">
+        {% for r in sent %}
+        <div class="bg-white rounded-xl shadow p-4 border-l-4 {% if r.payment_status == 'paid' %}border-green-500{% else %}border-yellow-400{% endif %}">
+            <div class="flex items-center gap-3 mb-3">
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 flex-wrap">
+                        {% if r.payment_status == 'paid' %}
+                        <span class="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full font-semibold">Zaplaceno</span>
+                        {% else %}
+                        <span class="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs rounded-full font-semibold">Čeká na platbu</span>
+                        {% endif %}
+                        <span class="font-semibold text-gray-900 truncate">{{ r.name }}</span>
+                    </div>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 gap-1 text-sm text-gray-600 mb-2">
+                {% if r.email %}
+                <div class="truncate"><i class="bi bi-envelope text-gray-400 mr-1.5"></i><a href="mailto:{{ r.email }}" class="text-blue-600 hover:underline">{{ r.email }}</a></div>
+                {% endif %}
+            </div>
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-400 mb-3">
+                <span class="font-mono">VS {{ r.variable_symbol }}</span>
+                {% if r.payment_amount %}<span>{{ r.payment_amount|int }} Kč</span>{% endif %}
+                {% if r.qr_sent_at %}<span>Odesláno: {{ r.qr_sent_at|prague_time }}</span>{% endif %}
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+                <form method="POST" action="{{ url_for('admin_registrace_delete', id=r.id) }}" class="inline">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                    <button type="button"
+                            class="inline-flex items-center gap-1 px-2.5 py-1.5 bg-red-50 text-red-700 text-sm rounded-lg hover:bg-red-100 transition"
+                            onclick="openDeleteModal(this.closest('form'), &quot;Opravdu chcete smazat registraci od {{ r.name|e }}?&quot;)">
+                        <i class="bi bi-trash3"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Desktop table -->
+    <div class="hidden lg:block bg-white rounded-xl shadow overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50 text-left text-sm text-gray-500 uppercase">
+                    <tr>
+                        <th class="px-4 py-3">Jméno</th>
+                        <th class="px-4 py-3">E-mail</th>
+                        <th class="px-4 py-3">VS</th>
+                        <th class="px-4 py-3">Částka</th>
+                        <th class="px-4 py-3">Platba</th>
+                        <th class="px-4 py-3">QR odesláno</th>
+                        <th class="px-4 py-3 text-right">Akce</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                    {% for r in sent %}
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-4 py-3 font-medium">{{ r.name }}</td>
+                        <td class="px-4 py-3 text-gray-500">
+                            {% if r.email %}<a href="mailto:{{ r.email }}" class="text-blue-600 hover:underline">{{ r.email }}</a>{% else %}–{% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-gray-500 text-sm font-mono">{{ r.variable_symbol or '–' }}</td>
+                        <td class="px-4 py-3 text-gray-500 text-sm">{% if r.payment_amount %}{{ r.payment_amount|int }} Kč{% else %}–{% endif %}</td>
+                        <td class="px-4 py-3">
+                            {% if r.payment_status == 'paid' %}
+                            <span class="px-2.5 py-1 bg-green-100 text-green-700 text-xs rounded-full font-semibold">Zaplaceno</span>
+                            {% else %}
+                            <span class="px-2.5 py-1 bg-yellow-100 text-yellow-700 text-xs rounded-full font-semibold">Čeká na platbu</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-gray-500 text-sm">{{ r.qr_sent_at|prague_time if r.qr_sent_at else '–' }}</td>
+                        <td class="px-4 py-3 text-right whitespace-nowrap">
+                            <form method="POST" action="{{ url_for('admin_registrace_delete', id=r.id) }}" class="inline">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                                <button type="button"
+                                        class="inline-flex items-center gap-1 px-2.5 py-1.5 bg-red-50 text-red-700 text-sm rounded-lg hover:bg-red-100 transition" title="Smazat"
+                                        onclick="openDeleteModal(this.closest('form'), &quot;Opravdu chcete smazat registraci od {{ r.name|e }}?&quot;)">
+                                    <i class="bi bi-trash3"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
 {% endif %}
 
@@ -287,23 +366,25 @@
 <div id="qr-modal" class="fixed inset-0 z-[100] flex items-center justify-center hidden">
     <div class="absolute inset-0 bg-black/50" onclick="closeQrModal()"></div>
     <div class="relative bg-white rounded-2xl shadow-2xl max-w-sm w-full mx-4 p-6">
-        <div class="w-14 h-14 rounded-full bg-blue-100 flex items-center justify-center mx-auto mb-4">
-            <i class="bi bi-qr-code text-2xl text-blue-600"></i>
+        <div class="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
+            <i class="bi bi-qr-code text-2xl text-green-600"></i>
         </div>
         <h3 class="font-bold text-lg text-gray-900 mb-1 text-center">Odeslat platební QR</h3>
-        <p id="qr-modal-name" class="text-gray-500 text-sm mb-4 text-center"></p>
-        <form id="qr-modal-form" method="POST">
+        <p id="qr-modal-count" class="text-gray-500 text-sm mb-4 text-center"></p>
+        <form id="qr-modal-form" method="POST" action="{{ url_for('admin_registrace_bulk_send_payment') }}">
             <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            <div id="qr-modal-ids"></div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Částka (Kč)</label>
             <input type="number" name="amount" id="qr-modal-amount" min="1" step="1" required
-                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 mb-4">
+                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 mb-4"
+                   value="{{ settings.get('payment_amount', '3500') }}">
             <div class="flex gap-3 justify-center">
                 <button type="button" onclick="closeQrModal()"
                         class="px-5 py-2.5 rounded-full border border-gray-300 text-sm font-semibold text-gray-600 hover:bg-gray-100 transition">
                     Zrušit
                 </button>
                 <button type="submit"
-                        class="px-5 py-2.5 rounded-full bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition">
+                        class="px-5 py-2.5 rounded-full bg-green-600 text-white text-sm font-semibold hover:bg-green-700 transition">
                     Odeslat QR
                 </button>
             </div>
@@ -312,11 +393,19 @@
 </div>
 
 <script>
-var _defaultPaymentAmount = {{ settings.get('payment_amount', '3500') }};
-function openQrModal(actionUrl, regName) {
-    document.getElementById('qr-modal-form').action = actionUrl;
-    document.getElementById('qr-modal-name').textContent = regName;
-    document.getElementById('qr-modal-amount').value = _defaultPaymentAmount;
+function openQrModal() {
+    var checked = document.querySelectorAll('.row-checkbox:checked');
+    if (checked.length === 0) return;
+    var container = document.getElementById('qr-modal-ids');
+    container.innerHTML = '';
+    checked.forEach(function(cb) {
+        var input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'ids';
+        input.value = cb.value;
+        container.appendChild(input);
+    });
+    document.getElementById('qr-modal-count').textContent = 'Vybraných registrací: ' + checked.length;
     document.getElementById('qr-modal').classList.remove('hidden');
 }
 function closeQrModal() {
@@ -338,10 +427,14 @@ function toggleAll(master) {
 }
 function updateBulkBtn() {
     var checked = document.querySelectorAll('.row-checkbox:checked');
-    var btn = document.getElementById('bulk-delete-btn');
-    var label = document.getElementById('bulk-delete-label');
-    btn.disabled = checked.length === 0;
-    label.textContent = checked.length > 0 ? 'Smazat vybrané (' + checked.length + ')' : 'Smazat vybrané';
+    var deleteBtn = document.getElementById('bulk-delete-btn');
+    var deleteLabel = document.getElementById('bulk-delete-label');
+    var qrBtn = document.getElementById('bulk-qr-btn');
+    var qrLabel = document.getElementById('bulk-qr-label');
+    deleteBtn.disabled = checked.length === 0;
+    deleteLabel.textContent = checked.length > 0 ? 'Smazat vybrané (' + checked.length + ')' : 'Smazat vybrané';
+    qrBtn.disabled = checked.length === 0;
+    qrLabel.textContent = checked.length > 0 ? 'Odeslat QR vybraným (' + checked.length + ')' : 'Odeslat QR vybraným';
     var all = document.querySelectorAll('.row-checkbox');
     var master = document.getElementById('select-all');
     if (master) master.checked = all.length > 0 && checked.length === all.length;
