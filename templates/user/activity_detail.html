@@ -1,0 +1,164 @@
+{% extends "user/base.html" %}
+{% block title %}{{ a.name }}{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('user_app') }}" class="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-4">
+    <i class="bi bi-arrow-left"></i> Zpět
+</a>
+
+<div class="bg-white rounded-xl shadow p-6 mb-6">
+    <div class="flex items-start justify-between gap-4 mb-4">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">{{ a.name }}</h1>
+            <p class="text-gray-500 mt-1">
+                <i class="bi bi-calendar3"></i> {{ a.start_date_local[:10] }}
+                <span class="ml-2"><i class="bi bi-clock"></i> {{ a.start_date_local[11:16] }}</span>
+                {% if a.type %}<span class="ml-2 px-2 py-0.5 bg-orange-100 text-orange-700 text-xs rounded-full font-semibold">{{ a.type }}</span>{% endif %}
+            </p>
+        </div>
+        <a href="https://www.strava.com/activities/{{ a.id }}" target="_blank"
+           class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-orange-500 text-white text-sm font-medium rounded-lg hover:bg-orange-400 transition shrink-0">
+            <i class="bi bi-box-arrow-up-right"></i> Strava
+        </a>
+    </div>
+
+    {% if a.description %}
+    <p class="text-gray-600 mb-4">{{ a.description }}</p>
+    {% endif %}
+
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">
+        <div class="bg-gray-50 rounded-lg p-4 text-center">
+            <div class="text-2xl font-bold text-gray-900">{{ '%.1f'|format(a.distance / 1000) }}</div>
+            <div class="text-xs text-gray-500 mt-1"><i class="bi bi-arrows-move"></i> km</div>
+        </div>
+        <div class="bg-gray-50 rounded-lg p-4 text-center">
+            <div class="text-2xl font-bold text-gray-900">{{ '%d:%02d:%02d'|format(a.moving_time // 3600, (a.moving_time % 3600) // 60, a.moving_time % 60) }}</div>
+            <div class="text-xs text-gray-500 mt-1"><i class="bi bi-clock"></i> Pohybový čas</div>
+        </div>
+        <div class="bg-gray-50 rounded-lg p-4 text-center">
+            <div class="text-2xl font-bold text-gray-900">{{ '%d:%02d:%02d'|format(a.elapsed_time // 3600, (a.elapsed_time % 3600) // 60, a.elapsed_time % 60) }}</div>
+            <div class="text-xs text-gray-500 mt-1"><i class="bi bi-stopwatch"></i> Celkový čas</div>
+        </div>
+        <div class="bg-gray-50 rounded-lg p-4 text-center">
+            <div class="text-2xl font-bold text-gray-900">{{ a.total_elevation_gain|int }}</div>
+            <div class="text-xs text-gray-500 mt-1"><i class="bi bi-arrow-up"></i> Převýšení (m)</div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">
+        {% if a.average_speed %}
+        <div class="bg-gray-50 rounded-lg p-4 text-center">
+            <div class="text-xl font-bold text-gray-900">{{ '%.1f'|format(a.average_speed * 3.6) }}</div>
+            <div class="text-xs text-gray-500 mt-1"><i class="bi bi-speedometer2"></i> Prům. rychlost (km/h)</div>
+        </div>
+        {% endif %}
+        {% if a.max_speed %}
+        <div class="bg-gray-50 rounded-lg p-4 text-center">
+            <div class="text-xl font-bold text-gray-900">{{ '%.1f'|format(a.max_speed * 3.6) }}</div>
+            <div class="text-xs text-gray-500 mt-1"><i class="bi bi-speedometer"></i> Max. rychlost (km/h)</div>
+        </div>
+        {% endif %}
+        {% if a.elev_high is defined and a.elev_high is not none %}
+        <div class="bg-gray-50 rounded-lg p-4 text-center">
+            <div class="text-xl font-bold text-gray-900">{{ a.elev_high|int }}</div>
+            <div class="text-xs text-gray-500 mt-1"><i class="bi bi-geo-alt"></i> Max. nadmořská výška (m)</div>
+        </div>
+        {% endif %}
+        {% if a.elev_low is defined and a.elev_low is not none %}
+        <div class="bg-gray-50 rounded-lg p-4 text-center">
+            <div class="text-xl font-bold text-gray-900">{{ a.elev_low|int }}</div>
+            <div class="text-xs text-gray-500 mt-1"><i class="bi bi-geo"></i> Min. nadmořská výška (m)</div>
+        </div>
+        {% endif %}
+        {% if a.average_heartrate %}
+        <div class="bg-gray-50 rounded-lg p-4 text-center">
+            <div class="text-xl font-bold text-red-500">{{ a.average_heartrate|int }}</div>
+            <div class="text-xs text-gray-500 mt-1"><i class="bi bi-heart-pulse"></i> Prům. tep (bpm)</div>
+        </div>
+        {% endif %}
+        {% if a.max_heartrate %}
+        <div class="bg-gray-50 rounded-lg p-4 text-center">
+            <div class="text-xl font-bold text-red-500">{{ a.max_heartrate|int }}</div>
+            <div class="text-xs text-gray-500 mt-1"><i class="bi bi-heart-fill"></i> Max. tep (bpm)</div>
+        </div>
+        {% endif %}
+        {% if a.average_watts %}
+        <div class="bg-gray-50 rounded-lg p-4 text-center">
+            <div class="text-xl font-bold text-yellow-600">{{ a.average_watts|int }}</div>
+            <div class="text-xs text-gray-500 mt-1"><i class="bi bi-lightning"></i> Prům. výkon (W)</div>
+        </div>
+        {% endif %}
+        {% if a.weighted_average_watts %}
+        <div class="bg-gray-50 rounded-lg p-4 text-center">
+            <div class="text-xl font-bold text-yellow-600">{{ a.weighted_average_watts|int }}</div>
+            <div class="text-xs text-gray-500 mt-1"><i class="bi bi-lightning-fill"></i> NP (W)</div>
+        </div>
+        {% endif %}
+        {% if a.max_watts %}
+        <div class="bg-gray-50 rounded-lg p-4 text-center">
+            <div class="text-xl font-bold text-yellow-600">{{ a.max_watts|int }}</div>
+            <div class="text-xs text-gray-500 mt-1"><i class="bi bi-lightning-charge"></i> Max. výkon (W)</div>
+        </div>
+        {% endif %}
+        {% if a.average_cadence %}
+        <div class="bg-gray-50 rounded-lg p-4 text-center">
+            <div class="text-xl font-bold text-gray-900">{{ a.average_cadence|int }}</div>
+            <div class="text-xs text-gray-500 mt-1"><i class="bi bi-arrow-repeat"></i> Prům. kadence (rpm)</div>
+        </div>
+        {% endif %}
+        {% if a.calories %}
+        <div class="bg-gray-50 rounded-lg p-4 text-center">
+            <div class="text-xl font-bold text-gray-900">{{ a.calories|int }}</div>
+            <div class="text-xs text-gray-500 mt-1"><i class="bi bi-fire"></i> Kalorie (kcal)</div>
+        </div>
+        {% endif %}
+        {% if a.kilojoules %}
+        <div class="bg-gray-50 rounded-lg p-4 text-center">
+            <div class="text-xl font-bold text-gray-900">{{ a.kilojoules|int }}</div>
+            <div class="text-xs text-gray-500 mt-1"><i class="bi bi-battery-charging"></i> Energie (kJ)</div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% if a.map and (a.map.polyline or a.map.summary_polyline) %}
+<div class="bg-white rounded-xl shadow p-6 mb-6">
+    <h2 class="font-bold mb-3"><i class="bi bi-map"></i> Mapa</h2>
+    <div id="activity-map" class="rounded-lg overflow-hidden" style="height: 400px;"></div>
+</div>
+{% endif %}
+
+{% if a.map and (a.map.polyline or a.map.summary_polyline) %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function() {
+    var encoded = {{ (a.map.polyline or a.map.summary_polyline)|tojson }};
+    function decode(str) {
+        var coords = [], lat = 0, lng = 0, i = 0;
+        while (i < str.length) {
+            var b, shift = 0, result = 0;
+            do { b = str.charCodeAt(i++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+            lat += (result & 1) ? ~(result >> 1) : (result >> 1);
+            shift = 0; result = 0;
+            do { b = str.charCodeAt(i++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+            lng += (result & 1) ? ~(result >> 1) : (result >> 1);
+            coords.push([lat / 1e5, lng / 1e5]);
+        }
+        return coords;
+    }
+    var coords = decode(encoded);
+    if (coords.length) {
+        var map = L.map('activity-map');
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap'
+        }).addTo(map);
+        var line = L.polyline(coords, {color: '#f97316', weight: 4}).addTo(map);
+        map.fitBounds(line.getBounds(), {padding: [30, 30]});
+        L.marker(coords[0], {title: 'Start'}).addTo(map).bindPopup('Start');
+        L.marker(coords[coords.length - 1], {title: 'Cíl'}).addTo(map).bindPopup('Cíl');
+    }
+})();
+</script>
+{% endif %}
+{% endblock %}

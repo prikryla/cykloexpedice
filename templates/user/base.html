@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Dashboard{% endblock %} – Cykloexpedice</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <nav class="bg-gray-900 text-white">
+        <div class="max-w-5xl mx-auto flex items-center justify-between px-4 h-14">
+            <a href="{{ url_for('user_app') }}" class="flex items-center gap-2 font-bold text-amber-400">
+                <img src="{{ url_for('static', filename='logo.png') }}" alt="" class="h-7">
+                Cykloexpedice
+            </a>
+            <div class="flex items-center gap-4">
+                <span class="text-sm text-gray-400">{{ session.user_name }}</span>
+                <a href="{{ url_for('user_logout') }}" class="text-sm text-red-400 hover:text-red-300">
+                    <i class="bi bi-box-arrow-right"></i> Odhlásit
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-5xl mx-auto p-6">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+            <div class="flash-msg p-4 rounded-lg mb-4 transition-opacity duration-500 {% if category == 'error' %}bg-red-100 text-red-800{% else %}bg-green-100 text-green-800{% endif %}">
+                {{ message }}
+            </div>
+            {% endfor %}
+        {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </main>
+<script>
+document.querySelectorAll('.flash-msg').forEach(function(el) {
+    setTimeout(function() {
+        el.style.opacity = '0';
+        setTimeout(function() { el.remove(); }, 500);
+    }, 4000);
+});
+</script>
+</body>
+</html>
