@@ -103,7 +103,7 @@
             {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
-                <div class="p-4 rounded-lg mb-4 {% if category == 'error' %}bg-red-100 text-red-800{% else %}bg-green-100 text-green-800{% endif %}">
+                <div class="flash-msg p-4 rounded-lg mb-4 transition-opacity duration-500 {% if category == 'error' %}bg-red-100 text-red-800{% else %}bg-green-100 text-green-800{% endif %}">
                     {{ message }}
                 </div>
                 {% endfor %}
@@ -149,6 +149,14 @@
             if (_deleteForm) _deleteForm.submit();
             closeDeleteModal();
         }
+    </script>
+    <script>
+    document.querySelectorAll('.flash-msg').forEach(function(el) {
+        setTimeout(function() {
+            el.style.opacity = '0';
+            setTimeout(function() { el.remove(); }, 500);
+        }, 4000);
+    });
     </script>
 </body>
 </html>
