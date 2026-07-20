@@ -2158,9 +2158,10 @@ def admin_registrace():
     ).fetchall()
     patched = []
     for r in rows:
-        if r['name'] in ('Adam Přikryl', 'Michal Přikryl') and r['payment_status'] != 'paid':
+        if r['name'] in ('Adam Přikryl', 'Michal Přikryl'):
             r = dict(r)
             r['payment_status'] = 'paid'
+            r['is_organizer'] = True
         patched.append(r)
     rows = patched
     counts = {

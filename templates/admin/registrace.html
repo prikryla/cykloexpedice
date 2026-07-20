@@ -278,7 +278,11 @@
             <div class="flex items-center gap-3 mb-3">
                 <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2 flex-wrap">
+                        {% if r.is_organizer is defined and r.is_organizer %}
+                        <span class="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full font-semibold">Organizátoři</span>
+                        {% else %}
                         <span class="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full font-semibold">Zaplaceno</span>
+                        {% endif %}
                         <span class="font-semibold text-gray-900 truncate">{{ r.name }}</span>
                     </div>
                 </div>
@@ -288,10 +292,12 @@
                 <div class="truncate"><i class="bi bi-envelope text-gray-400 mr-1.5"></i><a href="mailto:{{ r.email }}" class="text-blue-600 hover:underline">{{ r.email }}</a></div>
                 {% endif %}
             </div>
+            {% if not (r.is_organizer is defined and r.is_organizer) %}
             <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-400 mb-3">
                 <span class="font-mono">VS {{ r.variable_symbol }}</span>
                 {% if r.payment_amount %}<span>{{ r.payment_amount|int }} Kč</span>{% endif %}
             </div>
+            {% endif %}
             <div class="flex flex-wrap items-center gap-2">
                 <form method="POST" action="{{ url_for('admin_registrace_delete', id=r.id) }}" class="inline">
                     <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
@@ -327,10 +333,14 @@
                         <td class="px-4 py-3 text-gray-500">
                             {% if r.email %}<a href="mailto:{{ r.email }}" class="text-blue-600 hover:underline">{{ r.email }}</a>{% else %}–{% endif %}
                         </td>
-                        <td class="px-4 py-3 text-gray-500 text-sm font-mono">{{ r.variable_symbol or '–' }}</td>
-                        <td class="px-4 py-3 text-gray-500 text-sm">{% if r.payment_amount %}{{ r.payment_amount|int }} Kč{% else %}–{% endif %}</td>
+                        <td class="px-4 py-3 text-gray-500 text-sm font-mono">{% if r.is_organizer is defined and r.is_organizer %}–{% else %}{{ r.variable_symbol or '–' }}{% endif %}</td>
+                        <td class="px-4 py-3 text-gray-500 text-sm">{% if r.is_organizer is defined and r.is_organizer %}–{% elif r.payment_amount %}{{ r.payment_amount|int }} Kč{% else %}–{% endif %}</td>
                         <td class="px-4 py-3">
+                            {% if r.is_organizer is defined and r.is_organizer %}
+                            <span class="px-2.5 py-1 bg-blue-100 text-blue-700 text-xs rounded-full font-semibold">Organizátoři</span>
+                            {% else %}
                             <span class="px-2.5 py-1 bg-green-100 text-green-700 text-xs rounded-full font-semibold">Zaplaceno</span>
+                            {% endif %}
                         </td>
                         <td class="px-4 py-3 text-right whitespace-nowrap">
                             <form method="POST" action="{{ url_for('admin_registrace_delete', id=r.id) }}" class="inline">
