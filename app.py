@@ -838,7 +838,7 @@ def check_fio_payments():
         db.execute(
             "INSERT INTO site_settings (key, value) VALUES ('last_payment_check', ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            (datetime.now().strftime('%H:%M:%S'),)
+            (datetime.now(PRAGUE_TZ).strftime('%H:%M:%S'),)
         )
         db.commit()
         if email_items:
