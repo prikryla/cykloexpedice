@@ -2599,9 +2599,23 @@ def _schedule_weather_sms():
         print(f'[SMS] Scheduler started with {len(scheduler.get_jobs())} job(s)')
 
 
+def _schedule_payment_checks():
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler
+    except ImportError:
+        print('[PAY] APScheduler not installed, skipping payment checks')
+        return
+    scheduler = BackgroundScheduler(timezone='Europe/Prague')
+    scheduler.add_job(check_fio_payments, 'cron', hour=12, minute=0, id='payment_check_noon')
+    scheduler.add_job(check_fio_payments, 'cron', hour=20, minute=0, id='payment_check_evening')
+    scheduler.start()
+    print('[PAY] Scheduled payment checks at 12:00 and 20:00')
+
+
 if not os.environ.get('TESTING'):
     init_db()
     _schedule_weather_sms()
+    _schedule_payment_checks()
 
 
 if __name__ == '__main__':
