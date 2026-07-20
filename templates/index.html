@@ -70,20 +70,39 @@
             <h2 class="font-display text-4xl md:text-5xl text-white tracking-wide">NAŠE EXPEDICE</h2>
             <div class="section-divider mx-auto mt-4"></div>
         </div>
-        <div class="flex items-center justify-center gap-2 sm:gap-4 md:gap-6 lg:gap-8">
+        <!-- Mobile: grid with 3 per row -->
+        <div class="grid grid-cols-3 gap-5 md:hidden justify-items-center">
             {% for badge in [
                 ('becva_2013', '2013'), ('bratislava_2014', '2014'), ('orlicke_hory_2015', '2015'),
                 ('praha_2018', '2018'), ('wien_2019', '2019'), ('moravska_stezka_2020', '2020'),
                 ('jizanska_2021', '2021'), ('jestedska_2022', '2022'),
                 ('velkomoravska_2023', '2023'), ('staroceska_2025', '2025'), ('wachau_2026', '2026')
             ] %}
-            <div class="flex flex-col items-center gap-1 md:gap-2 group">
-                <div class="w-[7.5vw] h-[7.5vw] sm:w-[8vw] sm:h-[8vw] md:w-20 md:h-20 lg:w-28 lg:h-28 rounded-full overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.4)] transition duration-300{% if badge[0] == 'wachau_2026' %} opacity-40 grayscale{% else %} group-hover:scale-110 group-hover:shadow-[0_6px_30px_rgba(251,176,31,0.3)]{% endif %}">
+            <div class="flex flex-col items-center gap-1.5 group">
+                <div class="w-24 h-24 rounded-full overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.4)] transition duration-300{% if badge[0] == 'wachau_2026' %} opacity-40 grayscale{% endif %}">
                     <img src="{{ url_for('static', filename='badges/' ~ badge[0] ~ '.png') }}"
                          alt="{{ badge[0]|replace('_', ' ')|title }}"
                          class="w-full h-full object-cover">
                 </div>
-                <span class="text-[10px] sm:text-xs md:text-sm font-semibold transition{% if badge[0] == 'wachau_2026' %} text-gray-600{% else %} text-gray-500 group-hover:text-gold-500{% endif %}">{{ badge[1] }}</span>
+                <span class="text-xs font-semibold{% if badge[0] == 'wachau_2026' %} text-gray-600{% else %} text-gray-500{% endif %}">{{ badge[1] }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        <!-- Desktop: single row -->
+        <div class="hidden md:flex items-center justify-center gap-6 lg:gap-8">
+            {% for badge in [
+                ('becva_2013', '2013'), ('bratislava_2014', '2014'), ('orlicke_hory_2015', '2015'),
+                ('praha_2018', '2018'), ('wien_2019', '2019'), ('moravska_stezka_2020', '2020'),
+                ('jizanska_2021', '2021'), ('jestedska_2022', '2022'),
+                ('velkomoravska_2023', '2023'), ('staroceska_2025', '2025'), ('wachau_2026', '2026')
+            ] %}
+            <div class="flex flex-col items-center gap-2 group">
+                <div class="w-20 h-20 lg:w-28 lg:h-28 rounded-full overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.4)] transition duration-300{% if badge[0] == 'wachau_2026' %} opacity-40 grayscale{% else %} group-hover:scale-110 group-hover:shadow-[0_6px_30px_rgba(251,176,31,0.3)]{% endif %}">
+                    <img src="{{ url_for('static', filename='badges/' ~ badge[0] ~ '.png') }}"
+                         alt="{{ badge[0]|replace('_', ' ')|title }}"
+                         class="w-full h-full object-cover">
+                </div>
+                <span class="text-sm font-semibold transition{% if badge[0] == 'wachau_2026' %} text-gray-600{% else %} text-gray-500 group-hover:text-gold-500{% endif %}">{{ badge[1] }}</span>
             </div>
             {% endfor %}
         </div>
