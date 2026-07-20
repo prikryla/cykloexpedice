@@ -780,6 +780,7 @@ def check_fio_payments():
                 continue
             amount = amount_col.get('value', 0) if amount_col else 0
             vs_val = str(vs_col.get('value', '')) if vs_col else ''
+            vs_val = vs_val.lstrip('0') or '0'
             if amount > 0 and vs_val in vs_map:
                 reg = vs_map[vs_val]
                 if amount >= (reg['payment_amount'] or 0):
