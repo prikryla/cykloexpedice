@@ -785,33 +785,35 @@ def check_fio_payments():
         data = resp.json()
         tx_list = data.get('accountStatement', {}).get('transactionList', {})
         transactions = tx_list.get('transaction') if tx_list else None
-        if not transactions:
-            return
 
-        # Get all pending registrations
-        pending = db.execute(
-            "SELECT id, variable_symbol, payment_amount FROM registrace WHERE payment_status = 'pending'"
-        ).fetchall()
-        vs_map = {str(r['variable_symbol']): r for r in pending if r['variable_symbol']}
+        if transactions:
+            pending = db.execute(
+                "SELECT id, variable_symbol, payment_amount FROM registrace WHERE payment_status = 'pending'"
+            ).fetchall()
+            vs_map = {str(r['variable_symbol']): r for r in pending if r['variable_symbol']}
 
-        for tx in transactions:
-            # column1 = amount, column5 = VS
-            amount_col = tx.get('column1')
-            vs_col = tx.get('column5')
-            if not amount_col or not vs_col:
-                continue
-            amount = amount_col.get('value', 0) if amount_col else 0
-            vs_val = str(vs_col.get('value', '')) if vs_col else ''
-            vs_val = vs_val.lstrip('0') or '0'
-            if amount > 0 and vs_val in vs_map:
-                reg = vs_map[vs_val]
-                if amount >= (reg['payment_amount'] or 0):
-                    db.execute(
-                        "UPDATE registrace SET payment_status = 'paid' WHERE id = ?",
-                        (reg['id'],)
-                    )
-                    print(f'[FIO] Payment matched: VS={vs_val}, amount={amount}')
+            for tx in transactions:
+                amount_col = tx.get('column1')
+                vs_col = tx.get('column5')
+                if not amount_col or not vs_col:
+                    continue
+                amount = amount_col.get('value', 0) if amount_col else 0
+                vs_val = str(vs_col.get('value', '')) if vs_col else ''
+                vs_val = vs_val.lstrip('0') or '0'
+                if amount > 0 and vs_val in vs_map:
+                    reg = vs_map[vs_val]
+                    if amount >= (reg['payment_amount'] or 0):
+                        db.execute(
+                            "UPDATE registrace SET payment_status = 'paid' WHERE id = ?",
+                            (reg['id'],)
+                        )
+                        print(f'[FIO] Payment matched: VS={vs_val}, amount={amount}')
 
+        db.execute(
+            "INSERT INTO site_settings (key, value) VALUES ('last_payment_check', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (datetime.now().strftime('%H:%M:%S'),)
+        )
         db.commit()
     except Exception as e:
         print(f'[FIO API ERROR] {e}')
@@ -2170,8 +2172,11 @@ def admin_registrace():
         'approved': db.execute("SELECT COUNT(*) c FROM registrace WHERE status = 'approved'").fetchone()['c'],
         'denied': db.execute("SELECT COUNT(*) c FROM registrace WHERE status = 'denied'").fetchone()['c'],
     }
+    last_check = db.execute("SELECT value FROM site_settings WHERE key = 'last_payment_check'").fetchone()
+    last_payment_check = last_check['value'] if last_check else None
     return render_template('admin/registrace.html', registrace=rows, query=q,
-                           status_filter=status_filter, counts=counts)
+                           status_filter=status_filter, counts=counts,
+                           last_payment_check=last_payment_check)
 
 
 @app.route('/admin/registrace/<int:id>/approve', methods=['POST'])

@@ -267,9 +267,12 @@
 {% if sent_paid %}
 <!-- ═══ PAID SECTION ═══ -->
 <div class="mt-10">
-    <h2 class="text-lg font-bold text-gray-700 mb-4">
+    <h2 class="text-lg font-bold text-gray-700 mb-1">
         <i class="bi bi-check-circle-fill text-green-600"></i> Zaplaceno ({{ sent_paid|length }})
     </h2>
+    <p class="text-xs text-gray-400 mb-4">
+        {% if last_payment_check %}Poslední kontrola plateb: {{ last_payment_check }}{% else %}Platby ještě nebyly zkontrolovány{% endif %}
+    </p>
 
     <!-- Mobile cards -->
     <div class="lg:hidden space-y-3">
