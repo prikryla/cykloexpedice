@@ -2404,6 +2404,39 @@ def admin_check_payments():
     return redirect(url_for('admin_registrace'))
 
 
+@app.route('/admin/registrace/send-paid-confirmations', methods=['POST'])
+@login_required
+def admin_send_paid_confirmations():
+    """One-time: send payment confirmation email to all already-paid registrations."""
+    db = get_db()
+    settings = get_settings()
+    paid = db.execute(
+        "SELECT name, email FROM registrace WHERE payment_status = 'paid' AND email IS NOT NULL AND email != ''"
+    ).fetchall()
+    organizers = {'Adam Přikryl', 'Michal Přikryl'}
+    email_items = []
+    for r in paid:
+        if r['name'] in organizers:
+            continue
+        tpl_vars = {
+            'name': r['name'],
+            'event_name': settings.get('event_name', 'Cykloexpedice'),
+            'event_year': settings.get('event_year', ''),
+            'contact_name_1': settings.get('contact_name_1', ''),
+            'contact_name_2': settings.get('contact_name_2', ''),
+            'contact_email': settings.get('contact_email', ''),
+        }
+        subject, html = render_email_template('email_payment_confirmed', tpl_vars, settings)
+        email_items.append((r['email'], subject, html))
+    if email_items:
+        sender = session.get('admin_username')
+        send_bulk_emails(email_items, sender_username=sender)
+        flash(f'Potvrzení platby odesláno {len(email_items)} účastníkům.', 'success')
+    else:
+        flash('Žádné zaplacené registrace k odeslání.', 'error')
+    return redirect(url_for('admin_registrace'))
+
+
 # ── Admin: Email templates ────────────────────────────────────
 
 _COMMON_PLACEHOLDERS = {
