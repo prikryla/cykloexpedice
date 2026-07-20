@@ -15,7 +15,9 @@
         });
     </script>
     <div class="relative max-w-6xl mx-auto px-4 py-24 md:py-36 lg:py-44 text-center">
-        <p class="text-olive-500 font-semibold text-sm uppercase tracking-[0.2em] mb-4">Na kolech do rakouského údolí</p>
+        <p class="text-olive-500 font-semibold text-sm uppercase tracking-[0.2em] mb-6">Na kolech do rakouského údolí</p>
+        <img src="{{ url_for('static', filename='badges/wachau_2026.png') }}" alt="Wachau 2026"
+             class="w-40 md:w-52 mx-auto mb-8 rounded-full shadow-[0_0_40px_rgba(255,255,255,0.15)]">
         <h1 class="font-display text-5xl md:text-7xl lg:text-8xl text-white tracking-wide mb-6 leading-tight">
             {{ settings.event_name }}<br>
             <span class="text-gold-500">{{ settings.event_year }}</span>

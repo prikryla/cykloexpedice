@@ -2740,3 +2740,595 @@ class TestNotificationHtmlEscaping:
             html_body = admin_call[0][2]
             assert '<script>' not in html_body
             assert '&lt;script&gt;' in html_body
+
+
+# ── User auth tests ──────────────────────────────────────────────
+
+
+class TestUserRegistration:
+    def test_register_success(self, client):
+        resp = client.post('/login', data={
+            'action': 'register', 'email': 'jan@test.cz',
+            'name': 'Jan Novak', 'password': 'heslo123', 'password2': 'heslo123',
+        }, follow_redirects=True)
+        assert 'Jan Novak' in resp.data.decode()
+
+    def test_register_duplicate_email(self, client):
+        client.post('/login', data={
+            'action': 'register', 'email': 'dup@test.cz',
+            'name': 'Jan', 'password': 'heslo123', 'password2': 'heslo123',
+        })
+        client.get('/logout')
+        resp = client.post('/login', data={
+            'action': 'register', 'email': 'dup@test.cz',
+            'name': 'Jan2', 'password': 'heslo456', 'password2': 'heslo456',
+        }, follow_redirects=True)
+        assert 'již existuje' in resp.data.decode()
+
+    def test_register_short_password(self, client):
+        resp = client.post('/login', data={
+            'action': 'register', 'email': 'jan@test.cz',
+            'name': 'Jan', 'password': 'short', 'password2': 'short',
+        }, follow_redirects=True)
+        assert 'alespoň 8 znaků' in resp.data.decode()
+
+    def test_register_password_mismatch(self, client):
+        resp = client.post('/login', data={
+            'action': 'register', 'email': 'jan@test.cz',
+            'name': 'Jan', 'password': 'heslo123', 'password2': 'heslo999',
+        }, follow_redirects=True)
+        assert 'neshodují' in resp.data.decode()
+
+    def test_register_missing_fields(self, client):
+        resp = client.post('/login', data={
+            'action': 'register', 'email': '',
+            'name': '', 'password': '', 'password2': '',
+        }, follow_redirects=True)
+        assert 'Vyplňte' in resp.data.decode()
+
+    def test_check_email_new_shows_register(self, client):
+        resp = client.post('/login', data={
+            'action': 'check_email', 'email': 'new@test.cz',
+        })
+        assert resp.status_code == 200
+        assert 'register' in resp.data.decode()
+
+    def test_check_email_existing_shows_login(self, client, app):
+        import bcrypt
+        import app as flask_app
+        pw = bcrypt.hashpw(b'heslo123', bcrypt.gensalt()).decode()
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute("INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)",
+                       ('Existing', 'exists@test.cz', pw))
+            db.commit()
+        resp = client.post('/login', data={
+            'action': 'check_email', 'email': 'exists@test.cz',
+        })
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        assert 'value="login"' in html
+        assert 'register' not in html.split('value="login"')[0].split('action')[-1]
+
+    def test_check_email_empty(self, client):
+        resp = client.post('/login', data={
+            'action': 'check_email', 'email': '',
+        }, follow_redirects=True)
+        assert 'Zadejte' in resp.data.decode()
+
+
+class TestUserLogin:
+    def test_login_success(self, client):
+        client.post('/login', data={
+            'action': 'register', 'email': 'login@test.cz',
+            'name': 'Jan', 'password': 'heslo123', 'password2': 'heslo123',
+        })
+        client.get('/logout')
+        resp = client.post('/login', data={
+            'action': 'login', 'email': 'login@test.cz', 'password': 'heslo123',
+        }, follow_redirects=True)
+        assert 'Jan' in resp.data.decode()
+
+    def test_login_wrong_password(self, client):
+        client.post('/login', data={
+            'action': 'register', 'email': 'wrong@test.cz',
+            'name': 'Jan', 'password': 'heslo123', 'password2': 'heslo123',
+        })
+        client.get('/logout')
+        resp = client.post('/login', data={
+            'action': 'login', 'email': 'wrong@test.cz', 'password': 'badpass1',
+        }, follow_redirects=True)
+        assert 'Neplatn' in resp.data.decode()
+
+    def test_login_nonexistent_email(self, client):
+        resp = client.post('/login', data={
+            'action': 'login', 'email': 'nobody@test.cz', 'password': 'heslo123',
+        }, follow_redirects=True)
+        assert 'Neplatn' in resp.data.decode()
+
+    def test_login_page_loads(self, client):
+        resp = client.get('/login')
+        assert resp.status_code == 200
+        assert 'check_email' in resp.data.decode()
+
+    def test_logout(self, user_client):
+        resp = user_client.get('/logout', follow_redirects=True)
+        assert resp.status_code == 200
+        resp = user_client.get('/app')
+        assert resp.status_code == 302
+
+
+class TestUserForgotPassword:
+    def test_forgot_password_page_loads(self, client):
+        resp = client.get('/forgot-password')
+        assert resp.status_code == 200
+        assert 'Obnovení hesla' in resp.get_data(as_text=True)
+
+    def test_forgot_password_sends_email(self, client, app, monkeypatch):
+        import app as flask_app
+        pw_hash = bcrypt.hashpw(b'testpass', bcrypt.gensalt()).decode()
+        with app.app_context():
+            d = flask_app.get_db()
+            d.execute("INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)",
+                      ('Reset User', 'reset@test.cz', pw_hash))
+            d.commit()
+
+        sent = []
+        monkeypatch.setattr(flask_app, 'send_email', lambda *a, **kw: sent.append(a))
+        resp = client.post('/forgot-password', data={'email': 'reset@test.cz'}, follow_redirects=True)
+        assert resp.status_code == 200
+        assert 'odeslali jsme odkaz' in resp.get_data(as_text=True)
+        assert len(sent) == 1
+        assert sent[0][0] == 'reset@test.cz'
+
+    def test_forgot_password_nonexistent_email_no_leak(self, client, app, monkeypatch):
+        import app as flask_app
+        sent = []
+        monkeypatch.setattr(flask_app, 'send_email', lambda *a, **kw: sent.append(a))
+        resp = client.post('/forgot-password', data={'email': 'nobody@test.cz'}, follow_redirects=True)
+        assert resp.status_code == 200
+        assert 'odeslali jsme odkaz' in resp.get_data(as_text=True)
+        assert len(sent) == 0
+
+    def test_reset_password_valid_token(self, client, app):
+        import app as flask_app
+        pw_hash = bcrypt.hashpw(b'oldpass11', bcrypt.gensalt()).decode()
+        with app.app_context():
+            d = flask_app.get_db()
+            d.execute("INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)",
+                      ('Reset User2', 'reset2@test.cz', pw_hash))
+            d.commit()
+            user = d.execute("SELECT id FROM users WHERE email = 'reset2@test.cz'").fetchone()
+            token = 'valid-test-token-abc123'
+            from datetime import datetime, timedelta
+            expires = datetime.now() + timedelta(hours=1)
+            d.execute("INSERT INTO user_password_reset_tokens (user_id, token, expires_at) VALUES (?, ?, ?)",
+                      (user['id'], token, expires))
+            d.commit()
+
+        resp = client.get('/reset-password/valid-test-token-abc123')
+        assert resp.status_code == 200
+        assert 'Nastavení nového hesla' in resp.get_data(as_text=True)
+
+        resp = client.post('/reset-password/valid-test-token-abc123',
+                           data={'password': 'newpass88', 'password2': 'newpass88'},
+                           follow_redirects=True)
+        assert resp.status_code == 200
+        assert 'Heslo bylo úspěšně změněno' in resp.get_data(as_text=True)
+
+        resp = client.post('/login', data={'action': 'login', 'email': 'reset2@test.cz', 'password': 'newpass88'},
+                           follow_redirects=True)
+        assert resp.status_code == 200
+
+    def test_reset_password_invalid_token(self, client):
+        resp = client.get('/reset-password/bogus-token', follow_redirects=True)
+        assert 'neplatný nebo vypršel' in resp.get_data(as_text=True)
+
+    def test_reset_password_expired_token(self, client, app):
+        import app as flask_app
+        pw_hash = bcrypt.hashpw(b'oldpass11', bcrypt.gensalt()).decode()
+        with app.app_context():
+            d = flask_app.get_db()
+            d.execute("INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)",
+                      ('Expired User', 'expired@test.cz', pw_hash))
+            d.commit()
+            user = d.execute("SELECT id FROM users WHERE email = 'expired@test.cz'").fetchone()
+            from datetime import datetime, timedelta
+            expires = datetime.now() - timedelta(hours=1)
+            d.execute("INSERT INTO user_password_reset_tokens (user_id, token, expires_at) VALUES (?, ?, ?)",
+                      (user['id'], 'expired-token-xyz', expires))
+            d.commit()
+
+        resp = client.get('/reset-password/expired-token-xyz', follow_redirects=True)
+        assert 'neplatný nebo vypršel' in resp.get_data(as_text=True)
+
+    def test_reset_password_short_password(self, client, app):
+        import app as flask_app
+        pw_hash = bcrypt.hashpw(b'oldpass11', bcrypt.gensalt()).decode()
+        with app.app_context():
+            d = flask_app.get_db()
+            d.execute("INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)",
+                      ('Short User', 'short@test.cz', pw_hash))
+            d.commit()
+            user = d.execute("SELECT id FROM users WHERE email = 'short@test.cz'").fetchone()
+            from datetime import datetime, timedelta
+            expires = datetime.now() + timedelta(hours=1)
+            d.execute("INSERT INTO user_password_reset_tokens (user_id, token, expires_at) VALUES (?, ?, ?)",
+                      (user['id'], 'short-pw-token', expires))
+            d.commit()
+
+        resp = client.post('/reset-password/short-pw-token',
+                           data={'password': 'short', 'password2': 'short'})
+        assert resp.status_code == 200
+        assert 'alespoň 8 znaků' in resp.get_data(as_text=True)
+
+    def test_reset_password_mismatch(self, client, app):
+        import app as flask_app
+        pw_hash = bcrypt.hashpw(b'oldpass11', bcrypt.gensalt()).decode()
+        with app.app_context():
+            d = flask_app.get_db()
+            d.execute("INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)",
+                      ('Mismatch User', 'mismatch@test.cz', pw_hash))
+            d.commit()
+            user = d.execute("SELECT id FROM users WHERE email = 'mismatch@test.cz'").fetchone()
+            from datetime import datetime, timedelta
+            expires = datetime.now() + timedelta(hours=1)
+            d.execute("INSERT INTO user_password_reset_tokens (user_id, token, expires_at) VALUES (?, ?, ?)",
+                      (user['id'], 'mismatch-token', expires))
+            d.commit()
+
+        resp = client.post('/reset-password/mismatch-token',
+                           data={'password': 'newpass88', 'password2': 'different1'})
+        assert resp.status_code == 200
+        assert 'neshodují' in resp.get_data(as_text=True)
+
+    def test_reset_token_invalidated_after_use(self, client, app):
+        import app as flask_app
+        pw_hash = bcrypt.hashpw(b'oldpass11', bcrypt.gensalt()).decode()
+        with app.app_context():
+            d = flask_app.get_db()
+            d.execute("INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)",
+                      ('Reuse User', 'reuse@test.cz', pw_hash))
+            d.commit()
+            user = d.execute("SELECT id FROM users WHERE email = 'reuse@test.cz'").fetchone()
+            from datetime import datetime, timedelta
+            expires = datetime.now() + timedelta(hours=1)
+            d.execute("INSERT INTO user_password_reset_tokens (user_id, token, expires_at) VALUES (?, ?, ?)",
+                      (user['id'], 'one-time-token', expires))
+            d.commit()
+
+        client.post('/reset-password/one-time-token',
+                     data={'password': 'newpass88', 'password2': 'newpass88'},
+                     follow_redirects=True)
+        resp = client.get('/reset-password/one-time-token', follow_redirects=True)
+        assert 'neplatný nebo vypršel' in resp.get_data(as_text=True)
+
+    def test_login_page_shows_forgot_link(self, client, app):
+        import app as flask_app
+        pw_hash = bcrypt.hashpw(b'testpass', bcrypt.gensalt()).decode()
+        with app.app_context():
+            d = flask_app.get_db()
+            d.execute("INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)",
+                      ('Link User', 'link@test.cz', pw_hash))
+            d.commit()
+        resp = client.post('/login', data={'action': 'check_email', 'email': 'link@test.cz'})
+        assert 'forgot-password' in resp.get_data(as_text=True)
+
+
+class TestUserDashboard:
+    def test_app_requires_login(self, client):
+        resp = client.get('/app')
+        assert resp.status_code == 302
+        assert '/login' in resp.headers['Location']
+
+    def test_dashboard_redirects_to_app(self, user_client):
+        resp = user_client.get('/dashboard')
+        assert resp.status_code == 302
+        assert '/app' in resp.headers['Location']
+
+    def test_app_loads(self, user_client):
+        resp = user_client.get('/app')
+        assert resp.status_code == 200
+        assert 'Test User' in resp.data.decode()
+
+    def test_app_shows_strava_connect(self, user_client):
+        resp = user_client.get('/app')
+        assert 'Připojit' in resp.data.decode()
+
+    def test_app_shows_initials(self, user_client):
+        resp = user_client.get('/app')
+        assert 'TU' in resp.data.decode()
+
+    def test_app_shows_registration_status(self, app, user_client):
+        import app as flask_app
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute("INSERT INTO registrace (name, email, status, payment_status) VALUES (?, ?, ?, ?)",
+                       ('Test User', 'user@test.cz', 'approved', 'paid'))
+            db.commit()
+        resp = user_client.get('/app')
+        html = resp.data.decode()
+        assert 'Schváleno' in html
+        assert 'Zaplaceno' in html
+
+    def test_app_shows_no_registration(self, user_client):
+        resp = user_client.get('/app')
+        assert 'Nemáte registraci' in resp.data.decode()
+
+
+class TestStravaConnect:
+    def test_connect_redirects_to_strava(self, app, user_client, monkeypatch):
+        import app as flask_app
+        monkeypatch.setattr(flask_app, 'STRAVA_CLIENT_ID', '12345')
+        resp = user_client.get('/strava/connect')
+        assert resp.status_code == 302
+        assert 'strava.com/oauth/authorize' in resp.headers['Location']
+        assert 'client_id=12345' in resp.headers['Location']
+
+    def test_connect_without_config(self, app, user_client, monkeypatch):
+        import app as flask_app
+        monkeypatch.setattr(flask_app, 'STRAVA_CLIENT_ID', '')
+        resp = user_client.get('/strava/connect', follow_redirects=True)
+        assert 'není nakonfigurována' in resp.data.decode()
+
+    def test_connect_requires_login(self, client):
+        resp = client.get('/strava/connect')
+        assert resp.status_code == 302
+
+    def test_connect_includes_state(self, app, user_client, monkeypatch):
+        import app as flask_app
+        monkeypatch.setattr(flask_app, 'STRAVA_CLIENT_ID', '12345')
+        resp = user_client.get('/strava/connect')
+        assert 'state=' in resp.headers['Location']
+
+    def test_callback_stores_tokens(self, app, user_client, monkeypatch):
+        import app as flask_app
+        monkeypatch.setattr(flask_app, 'STRAVA_CLIENT_ID', '12345')
+        monkeypatch.setattr(flask_app, 'STRAVA_CLIENT_SECRET', 'secret')
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            'access_token': 'acc_tok', 'refresh_token': 'ref_tok',
+            'expires_at': 9999999999, 'athlete': {'id': 42},
+        }
+        with user_client.session_transaction() as sess:
+            sess['strava_oauth_state'] = 'test_state'
+        with patch('app.requests.post', return_value=mock_resp):
+            resp = user_client.get('/strava/callback?code=testcode&state=test_state', follow_redirects=True)
+
+        assert 'úspěšně propojena' in resp.data.decode()
+        with app.app_context():
+            db = flask_app.get_db()
+            user = db.execute('SELECT * FROM users WHERE email = ?', ('user@test.cz',)).fetchone()
+            assert user['strava_athlete_id'] == 42
+            assert user['strava_access_token'] == 'acc_tok'
+
+    def test_callback_rejects_missing_state(self, user_client):
+        resp = user_client.get('/strava/callback?code=testcode', follow_redirects=True)
+        assert 'OAuth' in resp.data.decode()
+
+    def test_callback_rejects_wrong_state(self, user_client):
+        with user_client.session_transaction() as sess:
+            sess['strava_oauth_state'] = 'correct'
+        resp = user_client.get('/strava/callback?code=testcode&state=wrong', follow_redirects=True)
+        assert 'OAuth' in resp.data.decode()
+
+    def test_callback_no_code(self, user_client):
+        with user_client.session_transaction() as sess:
+            sess['strava_oauth_state'] = 'test_state'
+        resp = user_client.get('/strava/callback?state=test_state', follow_redirects=True)
+        assert 'selhala' in resp.data.decode()
+
+    def test_callback_api_error(self, app, user_client, monkeypatch):
+        import app as flask_app
+        monkeypatch.setattr(flask_app, 'STRAVA_CLIENT_ID', '12345')
+        monkeypatch.setattr(flask_app, 'STRAVA_CLIENT_SECRET', 'secret')
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 401
+        with user_client.session_transaction() as sess:
+            sess['strava_oauth_state'] = 'test_state'
+        with patch('app.requests.post', return_value=mock_resp):
+            resp = user_client.get('/strava/callback?code=badcode&state=test_state', follow_redirects=True)
+        assert 'Nepodařilo' in resp.data.decode()
+
+    def test_disconnect(self, app, user_client):
+        import app as flask_app
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute('''UPDATE users SET strava_athlete_id = 42, strava_access_token = 'tok',
+                          strava_refresh_token = 'ref', strava_expires_at = 9999999999
+                          WHERE email = ?''', ('user@test.cz',))
+            db.commit()
+
+        resp = user_client.post('/strava/disconnect', follow_redirects=True)
+        assert 'odpojena' in resp.data.decode()
+        with app.app_context():
+            db = flask_app.get_db()
+            user = db.execute('SELECT * FROM users WHERE email = ?', ('user@test.cz',)).fetchone()
+            assert user['strava_access_token'] is None
+
+
+class TestStravaDashboardActivities:
+    def test_dashboard_with_strava_shows_activities(self, app, user_client):
+        import app as flask_app
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute('''UPDATE users SET strava_athlete_id = 42, strava_access_token = 'tok',
+                          strava_refresh_token = 'ref', strava_expires_at = 9999999999
+                          WHERE email = ?''', ('user@test.cz',))
+            db.commit()
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = [
+            {'id': 1001, 'type': 'Ride', 'name': 'Morning Ride', 'distance': 82000,
+             'moving_time': 10800, 'total_elevation_gain': 500, 'average_speed': 7.6,
+             'start_date_local': '2025-09-11T08:00:00Z'},
+            {'id': 1002, 'type': 'Run', 'name': 'Jog', 'distance': 5000,
+             'moving_time': 1800, 'total_elevation_gain': 30, 'average_speed': 2.8,
+             'start_date_local': '2025-09-11T09:00:00Z'},
+        ]
+        with patch('app.requests.get', return_value=mock_resp):
+            resp = user_client.get('/app')
+
+        html = resp.data.decode()
+        assert 'Morning Ride' in html
+        assert 'Jog' not in html
+        assert '82.0 km' in html
+
+    def test_dashboard_strava_token_refresh(self, app, user_client):
+        import app as flask_app
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute('''UPDATE users SET strava_athlete_id = 42, strava_access_token = 'old_tok',
+                          strava_refresh_token = 'ref', strava_expires_at = 1
+                          WHERE email = ?''', ('user@test.cz',))
+            db.commit()
+
+        refresh_resp = MagicMock()
+        refresh_resp.status_code = 200
+        refresh_resp.json.return_value = {
+            'access_token': 'new_tok', 'refresh_token': 'new_ref', 'expires_at': 9999999999,
+        }
+        activities_resp = MagicMock()
+        activities_resp.status_code = 200
+        activities_resp.json.return_value = []
+
+        with patch('app.requests.post', return_value=refresh_resp), \
+             patch('app.requests.get', return_value=activities_resp):
+            resp = user_client.get('/app')
+
+        assert resp.status_code == 200
+        with app.app_context():
+            db = flask_app.get_db()
+            user = db.execute('SELECT * FROM users WHERE email = ?', ('user@test.cz',)).fetchone()
+            assert user['strava_access_token'] == 'new_tok'
+
+    def _setup_strava_user(self, app):
+        import app as flask_app
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute('''UPDATE users SET strava_athlete_id = 42, strava_access_token = 'tok',
+                          strava_refresh_token = 'ref', strava_expires_at = 9999999999
+                          WHERE email = ?''', ('user@test.cz',))
+            db.commit()
+
+    def test_auto_dedup_prefers_device_over_phone(self, app, user_client):
+        self._setup_strava_user(app)
+
+        phone_ride = {'id': 2001, 'type': 'Ride', 'name': 'Phone Ride', 'distance': 80000,
+                      'moving_time': 10800, 'total_elevation_gain': 400, 'average_speed': 7.4,
+                      'start_date_local': '2025-09-11T08:00:00Z'}
+        device_ride = {'id': 2002, 'type': 'Ride', 'name': 'Garmin Ride', 'distance': 81000,
+                       'moving_time': 10900, 'total_elevation_gain': 410, 'average_speed': 7.4,
+                       'start_date_local': '2025-09-11T08:05:00Z'}
+
+        list_resp = MagicMock()
+        list_resp.status_code = 200
+        list_resp.json.return_value = [phone_ride, device_ride]
+
+        detail_phone = MagicMock()
+        detail_phone.status_code = 200
+        detail_phone.json.return_value = {'device_name': 'Strava iPhone App'}
+
+        detail_device = MagicMock()
+        detail_device.status_code = 200
+        detail_device.json.return_value = {'device_name': 'Garmin Edge 530'}
+
+        def mock_get(url, **kwargs):
+            if '/activities/2001' in url:
+                return detail_phone
+            if '/activities/2002' in url:
+                return detail_device
+            return list_resp
+
+        with patch('app.requests.get', side_effect=mock_get):
+            resp = user_client.get('/app')
+
+        html = resp.data.decode()
+        assert 'Garmin Ride' in html
+        assert 'Phone Ride' not in html
+
+        import app as flask_app
+        with app.app_context():
+            db = flask_app.get_db()
+            hidden = db.execute('SELECT strava_activity_id FROM hidden_activities WHERE user_id = (SELECT id FROM users WHERE email = ?)',
+                                ('user@test.cz',)).fetchall()
+            assert 2001 in {r['strava_activity_id'] for r in hidden}
+
+    def test_auto_dedup_keeps_all_when_same_type(self, app, user_client):
+        self._setup_strava_user(app)
+
+        ride1 = {'id': 3001, 'type': 'Ride', 'name': 'Garmin Ride 1', 'distance': 80000,
+                 'moving_time': 10800, 'total_elevation_gain': 400, 'average_speed': 7.4,
+                 'start_date_local': '2025-09-11T08:00:00Z'}
+        ride2 = {'id': 3002, 'type': 'Ride', 'name': 'Wahoo Ride 2', 'distance': 81000,
+                 'moving_time': 10900, 'total_elevation_gain': 410, 'average_speed': 7.4,
+                 'start_date_local': '2025-09-11T08:05:00Z'}
+
+        list_resp = MagicMock()
+        list_resp.status_code = 200
+        list_resp.json.return_value = [ride1, ride2]
+
+        detail1 = MagicMock()
+        detail1.status_code = 200
+        detail1.json.return_value = {'device_name': 'Garmin Edge 530'}
+
+        detail2 = MagicMock()
+        detail2.status_code = 200
+        detail2.json.return_value = {'device_name': 'Wahoo ELEMNT'}
+
+        def mock_get(url, **kwargs):
+            if '/activities/3001' in url:
+                return detail1
+            if '/activities/3002' in url:
+                return detail2
+            return list_resp
+
+        with patch('app.requests.get', side_effect=mock_get):
+            resp = user_client.get('/app')
+
+        html = resp.data.decode()
+        assert 'Garmin Ride 1' in html
+        assert 'Wahoo Ride 2' in html
+
+    def test_auto_dedup_uses_device_cache(self, app, user_client):
+        self._setup_strava_user(app)
+
+        import app as flask_app
+        with app.app_context():
+            db = flask_app.get_db()
+            user = db.execute('SELECT id FROM users WHERE email = ?', ('user@test.cz',)).fetchone()
+            db.execute('INSERT INTO activity_device_cache (user_id, strava_activity_id, device_name) VALUES (?, ?, ?)',
+                       (user['id'], 4001, 'Strava Android App'))
+            db.execute('INSERT INTO activity_device_cache (user_id, strava_activity_id, device_name) VALUES (?, ?, ?)',
+                       (user['id'], 4002, 'Garmin Edge 830'))
+            db.commit()
+
+        phone_ride = {'id': 4001, 'type': 'Ride', 'name': 'Phone Cached', 'distance': 80000,
+                      'moving_time': 10800, 'total_elevation_gain': 400, 'average_speed': 7.4,
+                      'start_date_local': '2025-09-11T08:00:00Z'}
+        device_ride = {'id': 4002, 'type': 'Ride', 'name': 'Device Cached', 'distance': 81000,
+                       'moving_time': 10900, 'total_elevation_gain': 410, 'average_speed': 7.4,
+                       'start_date_local': '2025-09-11T08:05:00Z'}
+
+        list_resp = MagicMock()
+        list_resp.status_code = 200
+        list_resp.json.return_value = [phone_ride, device_ride]
+
+        call_log = []
+
+        def mock_get(url, **kwargs):
+            call_log.append(url)
+            return list_resp
+
+        with patch('app.requests.get', side_effect=mock_get):
+            resp = user_client.get('/app')
+
+        html = resp.data.decode()
+        assert 'Device Cached' in html
+        assert 'Phone Cached' not in html
+        assert not any('/activities/4001' in u for u in call_log), "Should not call detail API for cached activity"
+        assert not any('/activities/4002' in u for u in call_log), "Should not call detail API for cached activity"

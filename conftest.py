@@ -162,3 +162,20 @@ def admin_client(app, client):
 
     client.post('/admin/login', data={'username': 'adam', 'password': 'testpass'})
     return client
+
+
+@pytest.fixture()
+def user_client(app, client):
+    """A test client logged in as a regular user."""
+    import app as flask_app
+
+    pw_hash = bcrypt.hashpw(b'userpass1', bcrypt.gensalt()).decode()
+
+    with app.app_context():
+        d = flask_app.get_db()
+        d.execute("INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)",
+                  ('Test User', 'user@test.cz', pw_hash))
+        d.commit()
+
+    client.post('/login', data={'action': 'login', 'email': 'user@test.cz', 'password': 'userpass1'})
+    return client

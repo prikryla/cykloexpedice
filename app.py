@@ -29,7 +29,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from vokativ import vokativ as _vokativ
 
-VERSION = '1.3.0'
+VERSION = '1.4.0'
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
@@ -37,7 +37,7 @@ app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__), 'static', 
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-app.config['SESSION_COOKIE_SECURE'] = not app.debug
+app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_ENV') == 'production'
 
 limiter = Limiter(get_remote_address, app=app, default_limits=[], storage_uri="memory://")
 
@@ -75,6 +75,8 @@ def prague_time_filter(dt, fmt='%d.%m.%Y %H:%M:%S'):
 
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
 FIO_API_TOKEN = os.environ.get('FIO_API_TOKEN', '')
+STRAVA_CLIENT_ID = os.environ.get('STRAVA_CLIENT_ID', '')
+STRAVA_CLIENT_SECRET = os.environ.get('STRAVA_CLIENT_SECRET', '')
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
@@ -203,6 +205,25 @@ def init_db():
             decided_at TIMESTAMP, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             variable_symbol INTEGER, payment_status TEXT DEFAULT 'none',
             payment_amount REAL, qr_sent_at TIMESTAMP)''',
+        '''CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY, name TEXT NOT NULL,
+            email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL,
+            strava_athlete_id BIGINT, strava_access_token TEXT,
+            strava_refresh_token TEXT, strava_expires_at INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''',
+        '''CREATE TABLE IF NOT EXISTS user_password_reset_tokens (
+            id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
+            token TEXT UNIQUE NOT NULL, expires_at TIMESTAMP NOT NULL,
+            used INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''',
+        '''CREATE TABLE IF NOT EXISTS hidden_activities (
+            id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
+            strava_activity_id BIGINT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''',
+        '''CREATE TABLE IF NOT EXISTS activity_device_cache (
+            id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id),
+            strava_activity_id BIGINT NOT NULL,
+            device_name TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''',
     ]:
         db.execute(stmt)
     db.commit()
@@ -685,6 +706,7 @@ def render_email_layout(body_html, settings):
 
 <!-- Footer -->
 <tr><td bgcolor="#2a2a29" style="background-color:#2a2a29;padding:28px 40px;text-align:center;">
+  <img src="https://cykloexpedice.cz/static/badges/wachau_2026.png" alt="Wachau 2026" width="80" style="display:block;width:80px;height:80px;border-radius:50%;margin:0 auto 16px;">
   <p style="font-family:'Montserrat',Arial,Helvetica,sans-serif;color:#9ca3af;font-size:13px;margin:0 0 6px;font-weight:600;">{contact_first_1} a {contact_first_2}</p>
   <a href="mailto:{contact_email}" style="font-family:'Montserrat',Arial,Helvetica,sans-serif;color:#fbb01f;font-size:13px;text-decoration:none;letter-spacing:0.5px;">{contact_email}</a>
 </td></tr>
@@ -1228,6 +1250,497 @@ def admin_profile():
     return render_template('admin/profile.html', admin=admin, smtp=smtp)
 
 
+# ── User auth ────────────────────────────────────────────────────
+
+def user_login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('user_login'))
+        return f(*args, **kwargs)
+    return decorated
+
+
+@app.route('/login', methods=['GET', 'POST'])
+@limiter.limit("10 per minute", methods=["POST"])
+def user_login():
+    if request.method == 'POST':
+        action = request.form.get('action', '')
+        email = request.form.get('email', '').strip().lower()
+
+        if action == 'check_email':
+            if not email:
+                flash('Zadejte e-mail.', 'error')
+                return render_template('user/login.html', step='email')
+            db = get_db()
+            user = db.execute('SELECT id FROM users WHERE email = ?', (email,)).fetchone()
+            if user:
+                return render_template('user/login.html', step='login', email=email)
+            return render_template('user/login.html', step='register', email=email)
+
+        elif action == 'login':
+            password = request.form.get('password', '')
+            db = get_db()
+            user = db.execute('SELECT * FROM users WHERE email = ?', (email,)).fetchone()
+            if user and bcrypt.checkpw(password.encode(), user['password_hash'].encode()):
+                session['user_id'] = user['id']
+                session['user_name'] = user['name']
+                return redirect(url_for('user_app'))
+            flash('Neplatné heslo.', 'error')
+            return render_template('user/login.html', step='login', email=email)
+
+        elif action == 'register':
+            name = request.form.get('name', '').strip()
+            password = request.form.get('password', '')
+            password2 = request.form.get('password2', '')
+
+            if not name or not email or not password:
+                flash('Vyplňte všechna pole.', 'error')
+                return render_template('user/login.html', step='register', email=email)
+            if len(password) < 8:
+                flash('Heslo musí mít alespoň 8 znaků.', 'error')
+                return render_template('user/login.html', step='register', email=email)
+            if password != password2:
+                flash('Hesla se neshodují.', 'error')
+                return render_template('user/login.html', step='register', email=email)
+
+            db = get_db()
+            existing = db.execute('SELECT id FROM users WHERE email = ?', (email,)).fetchone()
+            if existing:
+                flash('Účet s tímto e-mailem již existuje.', 'error')
+                return render_template('user/login.html', step='login', email=email)
+
+            hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+            db.execute('INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)',
+                       (name, email, hashed))
+            db.commit()
+
+            user = db.execute('SELECT * FROM users WHERE email = ?', (email,)).fetchone()
+            session['user_id'] = user['id']
+            session['user_name'] = user['name']
+            return redirect(url_for('user_app'))
+
+    return render_template('user/login.html', step='email')
+
+
+@app.route('/logout')
+def user_logout():
+    session.pop('user_id', None)
+    session.pop('user_name', None)
+    return redirect(url_for('user_login'))
+
+
+# ── User forgot / reset password ─────────────────────────────────
+
+@app.route('/forgot-password', methods=['GET', 'POST'])
+@limiter.limit("3 per minute", methods=["POST"])
+def user_forgot_password():
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip().lower()
+        db = get_db()
+        user = db.execute('SELECT * FROM users WHERE email = ?', (email,)).fetchone()
+
+        if user:
+            token = secrets.token_urlsafe(48)
+            expires = datetime.now().timestamp() + 3600
+            db.execute(
+                'INSERT INTO user_password_reset_tokens (user_id, token, expires_at) VALUES (?, ?, ?)',
+                (user['id'], token, datetime.fromtimestamp(expires))
+            )
+            db.commit()
+
+            reset_url = request.host_url.rstrip('/') + url_for('user_reset_password', token=token)
+            settings = get_settings()
+            body = (
+                '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
+                '<tr><td align="center" style="padding-bottom:24px;">'
+                '<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>'
+                '<td style="background-color:#fbb01f;padding:8px 24px;font-family:Arial,sans-serif;font-size:13px;font-weight:700;color:#1c1c1b;text-transform:uppercase;letter-spacing:2px;">OBNOVENÍ HESLA</td>'
+                '</tr></table></td></tr>'
+                '<tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:26px;color:#374151;">'
+                f'<p style="margin:0 0 16px;">Dobrý den, <strong>{html_escape(user["name"])}</strong>,</p>'
+                '<p style="margin:0 0 16px;">obdrželi jsme žádost o obnovení hesla k vašemu účtu na Cykloexpedici.</p>'
+                '<p style="margin:0 0 24px;">Klikněte na tlačítko níže pro nastavení nového hesla:</p>'
+                '</td></tr>'
+                '<tr><td align="center" style="padding:0 0 28px;">'
+                '<!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" href="' + reset_url + '" '
+                'style="height:48px;v-text-anchor:middle;width:280px;" arcsize="50%" fillcolor="#fbb01f">'
+                '<center style="color:#1c1c1b;font-family:Arial,sans-serif;font-size:14px;font-weight:bold;letter-spacing:1px;">NASTAVIT NOV&Eacute; HESLO</center>'
+                '</v:roundrect><![endif]-->'
+                '<!--[if !mso]><!-->'
+                f'<a href="{reset_url}" style="background-color:#fbb01f;color:#1c1c1b;padding:14px 36px;'
+                'text-decoration:none;font-weight:700;font-size:14px;font-family:Arial,sans-serif;display:inline-block;letter-spacing:1px;">'
+                'NASTAVIT NOV&Eacute; HESLO</a>'
+                '<!--<![endif]-->'
+                '</td></tr>'
+                '<tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:22px;color:#999999;">'
+                '<p style="margin:0 0 16px;">Tento odkaz je platný 1 hodinu. Pokud jste o obnovení hesla nežádali, tento e-mail ignorujte.</p>'
+                f'<p style="margin:0;font-size:12px;color:#cccccc;word-break:break-all;">Pokud tlačítko nefunguje, zkopírujte tento odkaz do prohlížeče:<br>{reset_url}</p>'
+                '</td></tr></table>'
+            )
+            html = render_email_layout(body, settings)
+            send_email(user['email'], 'Obnovení hesla – Cykloexpedice', html)
+
+        flash('Pokud účet s tímto e-mailem existuje, odeslali jsme odkaz pro obnovení hesla.', 'success')
+        return redirect(url_for('user_login'))
+
+    return render_template('user/forgot_password.html')
+
+
+@app.route('/reset-password/<token>', methods=['GET', 'POST'])
+@limiter.limit("5 per minute", methods=["POST"])
+def user_reset_password(token):
+    db = get_db()
+    row = db.execute(
+        'SELECT * FROM user_password_reset_tokens WHERE token = ? AND used = 0', (token,)
+    ).fetchone()
+
+    if not row:
+        flash('Odkaz pro obnovení hesla je neplatný nebo vypršel.', 'error')
+        return redirect(url_for('user_login'))
+
+    expires = row['expires_at']
+    if isinstance(expires, str):
+        expires = datetime.fromisoformat(expires)
+    if expires < datetime.now():
+        flash('Odkaz pro obnovení hesla je neplatný nebo vypršel.', 'error')
+        return redirect(url_for('user_login'))
+
+    if request.method == 'POST':
+        password = request.form.get('password', '')
+        password2 = request.form.get('password2', '')
+
+        if len(password) < 8:
+            flash('Heslo musí mít alespoň 8 znaků.', 'error')
+            return render_template('user/reset_password.html', token=token)
+        if password != password2:
+            flash('Hesla se neshodují.', 'error')
+            return render_template('user/reset_password.html', token=token)
+
+        hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+        db.execute('UPDATE users SET password_hash = ? WHERE id = ?', (hashed, row['user_id']))
+        db.execute('UPDATE user_password_reset_tokens SET used = 1 WHERE id = ?', (row['id'],))
+        db.execute('UPDATE user_password_reset_tokens SET used = 1 WHERE user_id = ? AND id != ?',
+                   (row['user_id'], row['id']))
+        db.commit()
+
+        flash('Heslo bylo úspěšně změněno. Přihlaste se.', 'success')
+        return redirect(url_for('user_login'))
+
+    return render_template('user/reset_password.html', token=token)
+
+
+# ── Strava OAuth2 ────────────────────────────────────────────────
+
+def _refresh_strava_token(db, user):
+    resp = requests.post('https://www.strava.com/oauth/token', data={
+        'client_id': STRAVA_CLIENT_ID,
+        'client_secret': STRAVA_CLIENT_SECRET,
+        'grant_type': 'refresh_token',
+        'refresh_token': user['strava_refresh_token'],
+    }, timeout=15)
+    if resp.status_code != 200:
+        return None
+    data = resp.json()
+    db.execute('''UPDATE users SET strava_access_token = ?, strava_refresh_token = ?,
+                  strava_expires_at = ? WHERE id = ?''',
+               (data['access_token'], data['refresh_token'], data['expires_at'], user['id']))
+    db.commit()
+    return data['access_token']
+
+
+def _get_strava_token(db, user):
+    if not user['strava_access_token']:
+        return None
+    if user['strava_expires_at'] and int(_time.time()) >= user['strava_expires_at']:
+        return _refresh_strava_token(db, user)
+    return user['strava_access_token']
+
+
+_PHONE_PATTERNS = ('iphone', 'android', 'strava iphone', 'strava android')
+
+
+def _is_phone_activity(device_name):
+    if not device_name:
+        return False
+    dn = device_name.lower()
+    return any(p in dn for p in _PHONE_PATTERNS)
+
+
+def _get_device_name(activity_id, token, db, user_id):
+    row = db.execute(
+        'SELECT device_name FROM activity_device_cache WHERE user_id = ? AND strava_activity_id = ?',
+        (user_id, activity_id)).fetchone()
+    if row:
+        return row['device_name']
+    try:
+        resp = requests.get(f'https://www.strava.com/api/v3/activities/{activity_id}',
+                            headers={'Authorization': f'Bearer {token}'}, timeout=15)
+        if resp.status_code == 200:
+            device_name = resp.json().get('device_name') or ''
+        else:
+            device_name = ''
+    except requests.RequestException:
+        device_name = ''
+    db.execute('INSERT INTO activity_device_cache (user_id, strava_activity_id, device_name) VALUES (?, ?, ?)',
+               (user_id, activity_id, device_name))
+    db.commit()
+    return device_name
+
+
+def _dedup_rides(rides, token, db, user_id, hidden_ids):
+    from collections import defaultdict
+    seen_ids = set()
+    unique_rides = []
+    for r in rides:
+        if r['id'] not in seen_ids:
+            seen_ids.add(r['id'])
+            unique_rides.append(r)
+    rides = unique_rides
+    by_date = defaultdict(list)
+    for r in rides:
+        by_date[r.get('start_date_local', '')[:10]].append(r)
+
+    dominated = set()
+    for date_key, group in by_date.items():
+        if len(group) < 2:
+            continue
+        dupe_pairs = []
+        for i in range(len(group)):
+            for j in range(i + 1, len(group)):
+                d1, d2 = group[i]['distance'], group[j]['distance']
+                if d1 and d2 and min(d1, d2) / max(d1, d2) >= 0.8:
+                    dupe_pairs.append((i, j))
+        if not dupe_pairs:
+            continue
+        dupe_indices = set()
+        for i, j in dupe_pairs:
+            dupe_indices.add(i)
+            dupe_indices.add(j)
+        devices = {}
+        for idx in dupe_indices:
+            a = group[idx]
+            devices[idx] = _get_device_name(a['id'], token, db, user_id)
+        phone_idx = {idx for idx in dupe_indices if _is_phone_activity(devices[idx])}
+        device_idx = dupe_indices - phone_idx
+        if phone_idx and device_idx:
+            for idx in phone_idx:
+                aid = group[idx]['id']
+                dominated.add(aid)
+                if aid not in hidden_ids:
+                    existing = db.execute(
+                        'SELECT id FROM hidden_activities WHERE user_id = ? AND strava_activity_id = ?',
+                        (user_id, aid)).fetchone()
+                    if not existing:
+                        db.execute('INSERT INTO hidden_activities (user_id, strava_activity_id) VALUES (?, ?)',
+                                   (user_id, aid))
+                        db.commit()
+                    hidden_ids.add(aid)
+
+    return [r for r in rides if r['id'] not in dominated]
+
+
+@app.route('/strava/connect')
+@user_login_required
+def strava_connect():
+    if not STRAVA_CLIENT_ID:
+        flash('Strava není nakonfigurována.', 'error')
+        return redirect(url_for('user_app'))
+    state = secrets.token_urlsafe(32)
+    session['strava_oauth_state'] = state
+    callback = url_for('strava_callback', _external=True)
+    url = (f'https://www.strava.com/oauth/authorize?client_id={STRAVA_CLIENT_ID}'
+           f'&redirect_uri={callback}&response_type=code'
+           f'&scope=activity:read&approval_prompt=auto&state={state}')
+    return redirect(url)
+
+
+@app.route('/strava/callback')
+@user_login_required
+def strava_callback():
+    state = request.args.get('state', '')
+    expected = session.pop('strava_oauth_state', None)
+    if not expected or state != expected:
+        flash('Neplatný OAuth stav. Zkuste to znovu.', 'error')
+        return redirect(url_for('user_app'))
+    code = request.args.get('code')
+    if not code:
+        flash('Autorizace Strava selhala.', 'error')
+        return redirect(url_for('user_app'))
+
+    resp = requests.post('https://www.strava.com/oauth/token', data={
+        'client_id': STRAVA_CLIENT_ID,
+        'client_secret': STRAVA_CLIENT_SECRET,
+        'code': code,
+        'grant_type': 'authorization_code',
+    }, timeout=15)
+
+    if resp.status_code != 200:
+        flash('Nepodařilo se připojit ke Strava.', 'error')
+        return redirect(url_for('user_app'))
+
+    data = resp.json()
+    db = get_db()
+    db.execute('''UPDATE users SET strava_athlete_id = ?, strava_access_token = ?,
+                  strava_refresh_token = ?, strava_expires_at = ? WHERE id = ?''',
+               (data['athlete']['id'], data['access_token'],
+                data['refresh_token'], data['expires_at'], session['user_id']))
+    db.commit()
+    flash('Strava byla úspěšně propojena!', 'success')
+    return redirect(url_for('user_app'))
+
+
+@app.route('/strava/disconnect', methods=['POST'])
+@user_login_required
+def strava_disconnect():
+    db = get_db()
+    db.execute('''UPDATE users SET strava_athlete_id = NULL, strava_access_token = NULL,
+                  strava_refresh_token = NULL, strava_expires_at = NULL WHERE id = ?''',
+               (session['user_id'],))
+    db.commit()
+    flash('Strava byla odpojena.', 'success')
+    return redirect(url_for('user_app'))
+
+
+@app.route('/activity/<int:activity_id>')
+@user_login_required
+def user_activity_detail(activity_id):
+    db = get_db()
+    user = db.execute('SELECT * FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+    if not user['strava_access_token']:
+        flash('Strava není propojena.', 'error')
+        return redirect(url_for('user_app'))
+
+    token = _get_strava_token(db, user)
+    if not token:
+        flash('Nepodařilo se obnovit Strava token.', 'error')
+        return redirect(url_for('user_app'))
+
+    try:
+        resp = requests.get(f'https://www.strava.com/api/v3/activities/{activity_id}',
+                            headers={'Authorization': f'Bearer {token}'},
+                            timeout=15)
+        if resp.status_code != 200:
+            flash('Aktivitu se nepodařilo načíst.', 'error')
+            return redirect(url_for('user_app'))
+        activity = resp.json()
+    except requests.RequestException:
+        flash('Chyba při komunikaci se Strava.', 'error')
+        return redirect(url_for('user_app'))
+
+    return render_template('user/activity_detail.html', a=activity)
+
+
+# ── User dashboard ───────────────────────────────────────────────
+
+@app.route('/dashboard')
+def user_dashboard_redirect():
+    return redirect(url_for('user_app'))
+
+
+@app.route('/app/hide-activity', methods=['POST'])
+@user_login_required
+def user_hide_activity():
+    activity_id = request.form.get('activity_id', type=int)
+    if not activity_id:
+        flash('Neplatná aktivita.', 'error')
+        return redirect(url_for('user_app'))
+    db = get_db()
+    existing = db.execute(
+        'SELECT id FROM hidden_activities WHERE user_id = ? AND strava_activity_id = ?',
+        (session['user_id'], activity_id)
+    ).fetchone()
+    if not existing:
+        db.execute(
+            'INSERT INTO hidden_activities (user_id, strava_activity_id) VALUES (?, ?)',
+            (session['user_id'], activity_id)
+        )
+        db.commit()
+    return redirect(url_for('user_app'))
+
+
+@app.route('/app')
+@user_login_required
+def user_app():
+    db = get_db()
+    user = db.execute('SELECT * FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+
+    registration = db.execute(
+        'SELECT * FROM registrace WHERE email = ? ORDER BY created_at DESC',
+        (user['email'],)
+    ).fetchone()
+
+    if registration and registration['name'] in ('Adam Přikryl', 'Michal Přikryl'):
+        registration = dict(registration)
+        registration['payment_status'] = 'paid'
+
+    hidden_rows = db.execute(
+        'SELECT strava_activity_id FROM hidden_activities WHERE user_id = ?',
+        (session['user_id'],)
+    ).fetchall()
+    hidden_ids = {row['strava_activity_id'] for row in hidden_rows}
+
+    strava_connected = bool(user['strava_access_token'])
+    past_expeditions = []
+
+    EXPEDITIONS = [
+        ('Staročeská Cykloexpedice 2025', '11.–13. 9. 2025',
+         ['2025-09-11', '2025-09-12', '2025-09-13']),
+        ('Ještědská 2022', '15.–17. 9. 2022',
+         ['2022-09-15', '2022-09-16', '2022-09-17']),
+        ('Jižanská 2021', '16.–18. 9. 2021',
+         ['2021-09-16', '2021-09-17', '2021-09-18']),
+        ('Moravská stezka 2020', '19.–20. 9. 2020',
+         ['2020-09-19', '2020-09-20']),
+        ('Wien 2019', '25.–26. 5. 2019',
+         ['2019-05-25', '2019-05-26']),
+    ]
+
+    if strava_connected:
+        token = _get_strava_token(db, user)
+        if not token:
+            strava_connected = False
+        else:
+            headers = {'Authorization': f'Bearer {token}'}
+
+            for exp_name, exp_dates_label, exp_date_list in EXPEDITIONS:
+                rides = []
+                for date_str in exp_date_list:
+                    dt = datetime.strptime(date_str, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+                    after_ts = int(dt.timestamp())
+                    before_ts = after_ts + 86400
+                    try:
+                        resp = requests.get('https://www.strava.com/api/v3/athlete/activities',
+                                            headers=headers,
+                                            params={'after': after_ts, 'before': before_ts,
+                                                    'per_page': 50},
+                                            timeout=15)
+                        if resp.status_code == 200:
+                            rides.extend(a for a in resp.json()
+                                         if a.get('type') == 'Ride' and a.get('id') not in hidden_ids)
+                    except requests.RequestException:
+                        pass
+                rides = _dedup_rides(rides, token, db, session['user_id'], hidden_ids)
+                past_expeditions.append({
+                    'name': exp_name,
+                    'dates': exp_dates_label,
+                    'rides': rides,
+                })
+
+    initials = ''
+    parts = (user['name'] or '').split()
+    if parts:
+        initials = parts[0][0].upper()
+        if len(parts) > 1:
+            initials += parts[-1][0].upper()
+
+    return render_template('user/dashboard.html', user=user,
+                           strava_connected=strava_connected,
+                           past_expeditions=past_expeditions,
+                           registration=registration,
+                           initials=initials)
+
+
 # ── Forgot / Reset password ───────────────────────────────────────
 
 @app.route('/admin/forgot-password', methods=['GET', 'POST'])
@@ -1639,6 +2152,7 @@ def admin_registrace():
     rows = db.execute(
         f"SELECT * FROM registrace {where} "
         "ORDER BY CASE status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 WHEN 'denied' THEN 2 ELSE 3 END, "
+        "CASE WHEN payment_status = 'paid' THEN 0 ELSE 1 END, "
         "created_at DESC",
         params
     ).fetchall()

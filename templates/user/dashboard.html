@@ -1,0 +1,183 @@
+{% extends "user/base.html" %}
+{% block title %}Profil{% endblock %}
+
+{% block content %}
+<div class="flex flex-col-reverse lg:flex-row gap-6">
+
+    <div class="flex-1 min-w-0">
+
+        <div class="bg-white rounded-xl shadow p-6 mb-6">
+            <h2 class="font-bold mb-4">Aktuální expedice</h2>
+            {% if registration %}
+            <div class="space-y-3">
+                <div class="flex items-center justify-between">
+                    <span class="font-medium text-gray-900">Cykloexpedice 2026</span>
+                    {% if registration.status == 'approved' %}
+                    <span class="inline-flex items-center gap-1 text-sm px-2.5 py-0.5 rounded-full bg-green-100 text-green-700">
+                        <i class="bi bi-check-circle-fill"></i> Schváleno
+                    </span>
+                    {% elif registration.status == 'denied' %}
+                    <span class="inline-flex items-center gap-1 text-sm px-2.5 py-0.5 rounded-full bg-red-100 text-red-700">
+                        <i class="bi bi-x-circle-fill"></i> Zamítnuto
+                    </span>
+                    {% else %}
+                    <span class="inline-flex items-center gap-1 text-sm px-2.5 py-0.5 rounded-full bg-yellow-100 text-yellow-700">
+                        <i class="bi bi-hourglass-split"></i> Čeká na schválení
+                    </span>
+                    {% endif %}
+                </div>
+                {% if registration.status == 'approved' %}
+                <div class="flex items-center justify-between text-sm">
+                    <span class="text-gray-500">Platba</span>
+                    {% if registration.payment_status == 'paid' %}
+                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-green-100 text-green-700">
+                        <i class="bi bi-check-circle-fill"></i> Zaplaceno
+                    </span>
+                    {% elif registration.payment_status == 'pending' %}
+                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-yellow-100 text-yellow-700">
+                        <i class="bi bi-clock"></i> Čeká na platbu
+                    </span>
+                    {% else %}
+                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gray-100 text-gray-500">
+                        <i class="bi bi-dash-circle"></i> Nezaplaceno
+                    </span>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+            {% else %}
+            <p class="text-gray-500 text-sm mb-3">Nemáte registraci na aktuální expedici.</p>
+            <a href="{{ url_for('registrace') }}" class="inline-flex items-center gap-1.5 px-4 py-2 bg-amber-500 text-gray-900 font-medium text-sm rounded-lg hover:bg-amber-400">
+                <i class="bi bi-pencil-square"></i> Registrovat se
+            </a>
+            {% endif %}
+        </div>
+
+        <div class="bg-white rounded-xl shadow p-6 mb-6">
+            <h2 class="font-bold mb-4">Předešlé cykloexpedice</h2>
+            {% if strava_connected and past_expeditions %}
+            <div class="space-y-2">
+                {% for exp in past_expeditions %}
+                {% if exp.rides %}
+                <details class="group">
+                    <summary class="flex items-center justify-between cursor-pointer select-none py-2 px-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition">
+                        <div class="flex items-center gap-2">
+                            <i class="bi bi-bicycle text-orange-500"></i>
+                            <span class="font-medium text-gray-900">{{ exp.name }}</span>
+                            <span class="text-xs text-gray-400">({{ exp.dates }})</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs text-gray-400">{{ exp.rides|length }} aktivit</span>
+                            <i class="bi bi-chevron-down text-gray-400 group-open:rotate-180 transition-transform"></i>
+                        </div>
+                    </summary>
+                    <div class="mt-3 space-y-2 pl-2">
+                        {% for a in exp.rides %}
+                        <div class="bg-gray-50 rounded-lg p-3 border-l-4 border-orange-400 flex items-center gap-2 hover:bg-gray-100 transition">
+                            <a href="{{ url_for('user_activity_detail', activity_id=a.id) }}" class="flex-1 flex flex-wrap items-center gap-x-5 gap-y-1 min-w-0">
+                                <span class="font-medium text-gray-900 text-sm truncate">{{ a.name }}</span>
+                                <span class="text-xs text-gray-500">{{ a.start_date_local[:10] }}</span>
+                                <span class="text-xs text-gray-600"><i class="bi bi-arrows-move"></i> {{ '%.1f'|format(a.distance / 1000) }} km</span>
+                                <span class="text-xs text-gray-600"><i class="bi bi-clock"></i> {{ '%d:%02d'|format(a.moving_time // 3600, (a.moving_time % 3600) // 60) }}</span>
+                                <span class="text-xs text-gray-600"><i class="bi bi-arrow-up"></i> {{ a.total_elevation_gain|int }} m</span>
+                                {% if a.average_speed %}
+                                <span class="text-xs text-gray-600"><i class="bi bi-speedometer2"></i> {{ '%.1f'|format(a.average_speed * 3.6) }} km/h</span>
+                                {% endif %}
+                            </a>
+                            <form method="POST" action="{{ url_for('user_hide_activity') }}" class="shrink-0">
+                                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="activity_id" value="{{ a.id }}">
+                                <button type="submit" title="Skrýt aktivitu" class="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition">
+                                    <i class="bi bi-x-lg text-xs"></i>
+                                </button>
+                            </form>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </details>
+                {% endif %}
+                {% endfor %}
+                {% if not past_expeditions|selectattr('rides')|list %}
+                <p class="text-gray-500 text-sm">Žádné aktivity z minulých expedic.</p>
+                {% endif %}
+            </div>
+            {% elif strava_connected %}
+            <p class="text-gray-500 text-sm">Žádné aktivity z minulých expedic.</p>
+            {% else %}
+            <p class="text-gray-500 text-sm">Propojte Strava pro zobrazení aktivit z minulých expedic.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="lg:w-72 space-y-6">
+
+        <div class="bg-white rounded-xl shadow p-6 text-center">
+            <div class="w-24 h-24 rounded-full bg-amber-500 flex items-center justify-center mx-auto mb-3">
+                <span class="text-2xl font-bold text-white">{{ initials }}</span>
+            </div>
+            <h2 class="font-bold text-gray-900">{{ user.name }}</h2>
+            <p class="text-sm text-gray-500">{{ user.email }}</p>
+        </div>
+
+        <div class="bg-white rounded-xl shadow p-5">
+            <h3 class="text-sm font-bold text-gray-700 mb-3">Strava</h3>
+            {% if strava_connected %}
+            <div class="flex items-center justify-between">
+                <span class="inline-flex items-center gap-1.5 text-sm text-green-700 bg-green-100 px-2.5 py-1 rounded-full">
+                    <i class="bi bi-check-circle-fill"></i> Propojeno
+                </span>
+                <form method="POST" action="{{ url_for('strava_disconnect') }}">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="text-xs text-red-600 hover:underline">Odpojit</button>
+                </form>
+            </div>
+            {% else %}
+            <a href="{{ url_for('strava_connect') }}"
+               class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-orange-500 text-white text-sm font-medium rounded-lg hover:bg-orange-400 w-full justify-center">
+                <i class="bi bi-link-45deg"></i> Připojit
+            </a>
+            {% endif %}
+            <p class="text-xs text-gray-400 mt-2">
+                Používáte Garmin? <a href="https://connect.garmin.com/modern/settings/connectedApps" target="_blank" class="text-amber-600 hover:underline">Propojte Garmin se Stravou</a>
+            </p>
+        </div>
+
+        <div class="bg-white rounded-xl shadow p-5">
+            <h3 class="text-sm font-bold text-gray-700 mb-3">Odznaky</h3>
+            <div class="grid grid-cols-3 gap-3">
+                {% for badge in [
+                    ('becva_2013.png', 'Bečva 2013'),
+                    ('bratislava_2014.png', 'Bratislava 2014'),
+                    ('orlicke_hory_2015.png', 'Orlické hory 2015'),
+                    ('praha_2018.png', 'Praha 2018'),
+                    ('wien_2019.png', 'Wien 2019'),
+                    ('moravska_stezka_2020.png', 'Moravská stezka 2020'),
+                    ('jizanska_2021.png', 'Jižanská 2021'),
+                    ('jestedska_2022.png', 'Ještědská 2022'),
+                    ('velkomoravska_2023.png', 'Velkomoravská 2023'),
+                    ('staroceska_2025.png', 'Staročeská 2025'),
+                    ('wachau_2026.png', 'Wachau 2026'),
+                ] %}
+                <div class="text-center">
+                    <img src="{{ url_for('static', filename='badges/' + badge[0]) }}" alt="{{ badge[1] }}"
+                         class="w-14 h-14 object-contain mx-auto hover:scale-110 transition cursor-pointer" title="{{ badge[1] }}"
+                         onclick="document.getElementById('badge-modal').classList.remove('hidden');document.getElementById('badge-modal-img').src=this.src;">
+                    <p class="text-[10px] text-gray-500 mt-1 leading-tight">{{ badge[1] }}</p>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<div id="badge-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50" onclick="if(event.target===this)this.classList.add('hidden')">
+    <div class="relative">
+        <button onclick="document.getElementById('badge-modal').classList.add('hidden')"
+                class="absolute -top-3 -right-3 w-8 h-8 bg-white rounded-full shadow flex items-center justify-center text-gray-600 hover:text-gray-900">
+            <i class="bi bi-x-lg"></i>
+        </button>
+        <img id="badge-modal-img" src="" alt="" class="max-w-xs max-h-[70vh] rounded-xl shadow-2xl">
+    </div>
+</div>
+{% endblock %}

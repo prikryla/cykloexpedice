@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Přihlášení – Cykloexpedice</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+    <div class="w-full max-w-sm mx-4">
+        <div class="text-center mb-6">
+            <img src="{{ url_for('static', filename='logo.png') }}" alt="" class="h-16 mx-auto mb-3">
+            <h1 class="text-xl font-bold text-gray-900">Cykloexpedice</h1>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+            <div class="p-3 rounded-lg mb-4 text-sm {% if category == 'error' %}bg-red-100 text-red-800{% else %}bg-green-100 text-green-800{% endif %}">
+                {{ message }}
+            </div>
+            {% endfor %}
+        {% endif %}
+        {% endwith %}
+
+        <form method="POST" class="bg-white rounded-xl shadow p-6 space-y-4">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+
+            {% if step == 'email' %}
+            <input type="hidden" name="action" value="check_email">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">E-mail</label>
+                <input type="email" name="email" required autofocus
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500">
+            </div>
+            <button type="submit"
+                    class="w-full py-2.5 bg-amber-500 text-gray-900 font-bold rounded-lg hover:bg-amber-400">
+                Pokračovat
+            </button>
+
+            {% elif step == 'login' %}
+            <input type="hidden" name="action" value="login">
+            <input type="hidden" name="email" value="{{ email }}">
+            <div class="text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2 flex items-center justify-between">
+                <span>{{ email }}</span>
+                <a href="{{ url_for('user_login') }}" class="text-amber-600 hover:underline">Změnit</a>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Heslo</label>
+                <input type="password" name="password" required autofocus
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500">
+            </div>
+            <button type="submit"
+                    class="w-full py-2.5 bg-amber-500 text-gray-900 font-bold rounded-lg hover:bg-amber-400">
+                Přihlásit se
+            </button>
+            <div class="text-center">
+                <a href="{{ url_for('user_forgot_password') }}" class="text-sm text-gray-500 hover:text-amber-600">Zapomenuté heslo?</a>
+            </div>
+
+            {% elif step == 'register' %}
+            <input type="hidden" name="action" value="register">
+            <input type="hidden" name="email" value="{{ email }}">
+            <div class="text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2 flex items-center justify-between">
+                <span>{{ email }}</span>
+                <a href="{{ url_for('user_login') }}" class="text-amber-600 hover:underline">Změnit</a>
+            </div>
+            <p class="text-sm text-gray-500">Tento e-mail nemá účet. Vytvořte si ho.</p>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Heslo</label>
+                <input type="password" name="password" required autofocus
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500">
+                <p class="text-xs text-gray-500 mt-1">Alespoň 8 znaků</p>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Heslo znovu</label>
+                <input type="password" name="password2" required
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Jméno</label>
+                <input type="text" name="name" required
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500">
+            </div>
+            <button type="submit"
+                    class="w-full py-2.5 bg-amber-500 text-gray-900 font-bold rounded-lg hover:bg-amber-400">
+                Vytvořit účet
+            </button>
+            {% endif %}
+        </form>
+    </div>
+</body>
+</html>
