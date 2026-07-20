@@ -22,13 +22,6 @@
                 <i class="bi bi-arrow-repeat"></i> Zkontrolovat platby
             </button>
         </form>
-        <form method="POST" action="{{ url_for('admin_send_paid_confirmations') }}"
-              onsubmit="return confirm('Odeslat potvrzení platby všem již zaplaceným registracím?')">
-            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="inline-flex items-center gap-2 px-3 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 transition">
-                <i class="bi bi-envelope-check"></i> Odeslat potvrzení zaplaceným
-            </button>
-        </form>
     </div>
 </div>
 
