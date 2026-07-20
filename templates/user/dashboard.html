@@ -159,9 +159,11 @@
                     ('wachau_2026.png', 'Wachau 2026'),
                 ] %}
                 <div class="text-center">
-                    <img src="{{ url_for('static', filename='badges/' + badge[0]) }}" alt="{{ badge[1] }}"
-                         class="w-14 h-14 object-contain mx-auto hover:scale-110 transition cursor-pointer" title="{{ badge[1] }}"
-                         onclick="document.getElementById('badge-modal').classList.remove('hidden');document.getElementById('badge-modal-img').src=this.src;">
+                    <div class="w-14 h-14 rounded-full overflow-hidden mx-auto hover:scale-110 transition cursor-pointer"
+                         onclick="document.getElementById('badge-modal').classList.remove('hidden');document.getElementById('badge-modal-img').src=this.querySelector('img').src;">
+                        <img src="{{ url_for('static', filename='badges/' + badge[0]) }}" alt="{{ badge[1] }}" title="{{ badge[1] }}"
+                             class="w-full h-full object-cover">
+                    </div>
                     <p class="text-[10px] text-gray-500 mt-1 leading-tight">{{ badge[1] }}</p>
                 </div>
                 {% endfor %}
