@@ -321,6 +321,18 @@ def init_db():
             '<tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:26px;color:#374151;">'
             '<p style="margin:0;">Pokud máte dotazy, neváhejte nás kontaktovat na {{contact_email}}.</p>'
             '</td></tr></table>',
+        'email_payment_confirmed_subject': 'Platba přijata – {{event_name}} {{event_year}}',
+        'email_payment_confirmed_body': '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
+            '<tr><td align="center" style="padding-bottom:24px;">'
+            '<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>'
+            '<td style="background-color:#99b20f;padding:8px 24px;font-family:Arial,sans-serif;font-size:13px;font-weight:700;color:#ffffff;text-transform:uppercase;letter-spacing:2px;">PLATBA PŘIJATA</td>'
+            '</tr></table></td></tr>'
+            '<tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:26px;color:#374151;">'
+            '<p style="margin:0 0 16px;">Ahoj <strong>{{name_vocative}}</strong>,</p>'
+            '<p style="margin:0 0 16px;">potvrzujeme přijetí tvé platby a oficiálně tě tak vítáme na startovní listině '
+            '<strong>{{event_name}} {{event_year}}</strong>!</p>'
+            '<p style="margin:0;">Těšíme se na společné kilometry. Brzy se ozveme s dalšími informacemi k expedici.</p>'
+            '</td></tr></table>',
         'email_payment_subject': 'Platební údaje – {{event_name}} {{event_year}}',
         'email_payment_body': '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
             '<tr><td align="center" style="padding-bottom:24px;">'
@@ -786,11 +798,14 @@ def check_fio_payments():
         tx_list = data.get('accountStatement', {}).get('transactionList', {})
         transactions = tx_list.get('transaction') if tx_list else None
 
+        email_items = []
         if transactions:
             pending = db.execute(
-                "SELECT id, variable_symbol, payment_amount FROM registrace WHERE payment_status = 'pending'"
+                "SELECT id, name, email, variable_symbol, payment_amount FROM registrace WHERE payment_status = 'pending'"
             ).fetchall()
             vs_map = {str(r['variable_symbol']): r for r in pending if r['variable_symbol']}
+            settings_rows = db.execute('SELECT key, value FROM site_settings').fetchall()
+            settings = {row['key']: row['value'] for row in settings_rows}
 
             for tx in transactions:
                 amount_col = tx.get('column1')
@@ -808,6 +823,17 @@ def check_fio_payments():
                             (reg['id'],)
                         )
                         print(f'[FIO] Payment matched: VS={vs_val}, amount={amount}')
+                        if reg['email']:
+                            tpl_vars = {
+                                'name': reg['name'],
+                                'event_name': settings.get('event_name', 'Cykloexpedice'),
+                                'event_year': settings.get('event_year', ''),
+                                'contact_name_1': settings.get('contact_name_1', ''),
+                                'contact_name_2': settings.get('contact_name_2', ''),
+                                'contact_email': settings.get('contact_email', ''),
+                            }
+                            subject, html = render_email_template('email_payment_confirmed', tpl_vars, settings)
+                            email_items.append((reg['email'], subject, html))
 
         db.execute(
             "INSERT INTO site_settings (key, value) VALUES ('last_payment_check', ?) "
@@ -815,6 +841,8 @@ def check_fio_payments():
             (datetime.now().strftime('%H:%M:%S'),)
         )
         db.commit()
+        if email_items:
+            send_bulk_emails(email_items)
     except Exception as e:
         print(f'[FIO API ERROR] {e}')
     finally:
@@ -2419,6 +2447,12 @@ EMAIL_TEMPLATES = [
             'payment_note': 'Poznámka k platbě',
             'qr_code': 'QR kód (obrázek)',
         },
+    },
+    {
+        'key': 'email_payment_confirmed',
+        'label': 'Potvrzení platby',
+        'description': 'Automaticky odesláno účastníkovi po přijetí platby.',
+        'placeholders': _COMMON_PLACEHOLDERS,
     },
 ]
 

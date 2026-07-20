@@ -3332,3 +3332,324 @@ class TestStravaDashboardActivities:
         assert 'Phone Cached' not in html
         assert not any('/activities/4001' in u for u in call_log), "Should not call detail API for cached activity"
         assert not any('/activities/4002' in u for u in call_log), "Should not call detail API for cached activity"
+
+
+class TestCheckFioPaymentsConfirmationEmail:
+    def test_sends_confirmation_email_on_match(self, app):
+        import app as flask_app
+
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO registrace (name, email, status, variable_symbol, "
+                "payment_status, payment_amount) VALUES (?, ?, 'approved', ?, 'pending', ?)",
+                ('Jan Novák', 'jan@test.cz', 55, 3500))
+            db.commit()
+
+        fio_response = {
+            'accountStatement': {
+                'transactionList': {
+                    'transaction': [{
+                        'column1': {'value': 3500},
+                        'column5': {'value': '55'},
+                    }]
+                }
+            }
+        }
+
+        with patch('app.requests.get') as mock_get, \
+             patch('app.send_bulk_emails') as mock_bulk:
+            mock_get.return_value = MagicMock(status_code=200, json=lambda: fio_response)
+            flask_app.check_fio_payments()
+
+            mock_bulk.assert_called_once()
+            items = mock_bulk.call_args[0][0]
+            assert len(items) == 1
+            assert items[0][0] == 'jan@test.cz'
+            assert 'Platba přijata' in items[0][1] or 'platby' in items[0][1].lower()
+            assert 'Jane' in items[0][2]  # vocative of Jan
+
+    def test_no_email_when_no_match(self, app):
+        import app as flask_app
+
+        fio_response = {
+            'accountStatement': {
+                'transactionList': {
+                    'transaction': [{
+                        'column1': {'value': 3500},
+                        'column5': {'value': '999'},
+                    }]
+                }
+            }
+        }
+
+        with patch('app.requests.get') as mock_get, \
+             patch('app.send_bulk_emails') as mock_bulk:
+            mock_get.return_value = MagicMock(status_code=200, json=lambda: fio_response)
+            flask_app.check_fio_payments()
+            mock_bulk.assert_not_called()
+
+    def test_no_email_when_no_email_address(self, app):
+        import app as flask_app
+
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO registrace (name, email, status, variable_symbol, "
+                "payment_status, payment_amount) VALUES (?, ?, 'approved', ?, 'pending', ?)",
+                ('No Email', '', 66, 3500))
+            db.commit()
+
+        fio_response = {
+            'accountStatement': {
+                'transactionList': {
+                    'transaction': [{
+                        'column1': {'value': 3500},
+                        'column5': {'value': '66'},
+                    }]
+                }
+            }
+        }
+
+        with patch('app.requests.get') as mock_get, \
+             patch('app.send_bulk_emails') as mock_bulk:
+            mock_get.return_value = MagicMock(status_code=200, json=lambda: fio_response)
+            flask_app.check_fio_payments()
+            mock_bulk.assert_not_called()
+
+
+class TestVSLeadingZeroStripping:
+    def test_matches_vs_with_leading_zeros(self, app):
+        import app as flask_app
+
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO registrace (name, email, status, variable_symbol, "
+                "payment_status, payment_amount) VALUES (?, ?, 'approved', ?, 'pending', ?)",
+                ('Test Zero', 'z@y.cz', 23, 3500))
+            db.commit()
+
+        fio_response = {
+            'accountStatement': {
+                'transactionList': {
+                    'transaction': [{
+                        'column1': {'value': 3500},
+                        'column5': {'value': '0000000023'},
+                    }]
+                }
+            }
+        }
+
+        with patch('app.requests.get') as mock_get, \
+             patch('app.send_bulk_emails'):
+            mock_get.return_value = MagicMock(status_code=200, json=lambda: fio_response)
+            flask_app.check_fio_payments()
+
+        with app.app_context():
+            db = flask_app.get_db()
+            row = db.execute("SELECT payment_status FROM registrace WHERE variable_symbol = 23").fetchone()
+            assert row['payment_status'] == 'paid'
+
+    def test_matches_vs_without_leading_zeros(self, app):
+        """VS stored as 42 should still match bank's '42' (no leading zeros)."""
+        import app as flask_app
+
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO registrace (name, email, status, variable_symbol, "
+                "payment_status, payment_amount) VALUES (?, ?, 'approved', ?, 'pending', ?)",
+                ('Test Plain', 'plain@y.cz', 42, 3500))
+            db.commit()
+
+        fio_response = {
+            'accountStatement': {
+                'transactionList': {
+                    'transaction': [{
+                        'column1': {'value': 3500},
+                        'column5': {'value': '42'},
+                    }]
+                }
+            }
+        }
+
+        with patch('app.requests.get') as mock_get, \
+             patch('app.send_bulk_emails'):
+            mock_get.return_value = MagicMock(status_code=200, json=lambda: fio_response)
+            flask_app.check_fio_payments()
+
+        with app.app_context():
+            db = flask_app.get_db()
+            row = db.execute("SELECT payment_status FROM registrace WHERE variable_symbol = 42").fetchone()
+            assert row['payment_status'] == 'paid'
+
+
+class TestLastPaymentCheckTimestamp:
+    def test_timestamp_saved_on_successful_check(self, app):
+        import app as flask_app
+
+        fio_response = {
+            'accountStatement': {
+                'transactionList': None
+            }
+        }
+
+        with patch('app.requests.get') as mock_get:
+            mock_get.return_value = MagicMock(status_code=200, json=lambda: fio_response)
+            flask_app.check_fio_payments()
+
+        with app.app_context():
+            db = flask_app.get_db()
+            row = db.execute("SELECT value FROM site_settings WHERE key = 'last_payment_check'").fetchone()
+            assert row is not None
+            assert ':' in row['value']  # HH:MM:SS format
+
+    def test_timestamp_shown_in_registrace(self, admin_client, app):
+        import app as flask_app
+
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute("INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)",
+                       ('last_payment_check', '14:30:05'))
+            db.execute(
+                "INSERT INTO registrace (name, email, status, variable_symbol, "
+                "payment_status, payment_amount) VALUES (?, ?, 'approved', ?, 'paid', ?)",
+                ('Paid User', 'paid@test.cz', 77, 3500))
+            db.commit()
+
+        r = admin_client.get('/admin/registrace')
+        html = r.data.decode()
+        assert '14:30:05' in html
+
+    def test_no_timestamp_shows_placeholder(self, admin_client, app):
+        import app as flask_app
+
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO registrace (name, email, status, variable_symbol, "
+                "payment_status, payment_amount) VALUES (?, ?, 'approved', ?, 'paid', ?)",
+                ('Paid User2', 'paid2@test.cz', 78, 3500))
+            db.commit()
+
+        r = admin_client.get('/admin/registrace')
+        html = r.data.decode()
+        assert 'nebyly zkontrolovány' in html
+
+
+class TestOrganizerPatching:
+    def test_adam_prikryl_shown_as_organizer(self, admin_client, app):
+        import app as flask_app
+
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
+                ('Adam Přikryl', 'adam@test.cz'))
+            db.commit()
+
+        r = admin_client.get('/admin/registrace')
+        html = r.data.decode()
+        assert 'Organizátoři' in html
+
+    def test_michal_prikryl_shown_as_organizer(self, admin_client, app):
+        import app as flask_app
+
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO registrace (name, email, status) VALUES (?, ?, 'approved')",
+                ('Michal Přikryl', 'michal@test.cz'))
+            db.commit()
+
+        r = admin_client.get('/admin/registrace')
+        html = r.data.decode()
+        assert 'Organizátoři' in html
+
+    def test_regular_user_not_shown_as_organizer(self, admin_client, app):
+        import app as flask_app
+
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO registrace (name, email, status, variable_symbol, "
+                "payment_status, payment_amount) VALUES (?, ?, 'approved', ?, 'paid', ?)",
+                ('Jan Novák', 'jan@test.cz', 88, 3500))
+            db.commit()
+
+        r = admin_client.get('/admin/registrace')
+        html = r.data.decode()
+        assert 'Zaplaceno' in html
+        assert 'Jan Novák' in html
+
+    def test_organizer_hides_vs_and_amount(self, admin_client, app):
+        import app as flask_app
+
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO registrace (name, email, status, variable_symbol, "
+                "payment_status, payment_amount) VALUES (?, ?, 'approved', ?, 'pending', ?)",
+                ('Adam Přikryl', 'adam@test.cz', 101, 3500))
+            db.commit()
+
+        r = admin_client.get('/admin/registrace')
+        html = r.data.decode()
+        # Organizer row should not show the variable symbol value
+        assert '101' not in html or 'Organizátoři' in html
+
+
+class TestPaymentConfirmedEmailTemplate:
+    def test_default_template_exists(self, app):
+        with app.app_context():
+            import app as flask_app
+            db = flask_app.get_db()
+            subj = db.execute(
+                "SELECT value FROM site_settings WHERE key = 'email_payment_confirmed_subject'"
+            ).fetchone()
+            body = db.execute(
+                "SELECT value FROM site_settings WHERE key = 'email_payment_confirmed_body'"
+            ).fetchone()
+            assert subj is not None
+            assert 'Platba přijata' in subj['value']
+            assert body is not None
+            assert 'startovní listině' in body['value']
+
+    def test_template_in_admin_list(self, admin_client):
+        r = admin_client.get('/admin/email-sablony')
+        html = r.data.decode()
+        assert 'Potvrzení platby' in html
+
+    def test_template_renders_correctly(self, app):
+        from app import render_email_template
+        with app.app_context():
+            variables = {
+                'name': 'Petr Novák',
+                'event_name': 'Cykloexpedice',
+                'event_year': '2026',
+                'contact_name_1': 'Adam',
+                'contact_name_2': 'Michal',
+                'contact_email': 'info@cyklo.cz',
+            }
+            subject, html = render_email_template('email_payment_confirmed', variables)
+            assert 'Platba přijata' in subject
+            assert 'Petře' in html  # vocative
+            assert 'startovní listině' in html
+            assert '{{' not in html
+
+
+class TestScheduledPaymentChecks:
+    def test_schedule_function_exists(self):
+        from app import _schedule_payment_checks
+        assert callable(_schedule_payment_checks)
+
+    def test_schedule_creates_jobs(self):
+        from app import _schedule_payment_checks
+        with patch('app.BackgroundScheduler', create=True) as MockScheduler:
+            mock_sched = MagicMock()
+            MockScheduler.return_value = mock_sched
+            with patch.dict('sys.modules', {'apscheduler.schedulers.background': MagicMock(BackgroundScheduler=MockScheduler)}):
+                _schedule_payment_checks()
+            assert mock_sched.add_job.call_count == 2
+            assert mock_sched.start.called
