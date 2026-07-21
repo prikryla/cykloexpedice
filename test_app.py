@@ -2,7 +2,7 @@
 import os
 import time as _time_module
 from datetime import datetime, timezone
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, ANY
 import bcrypt
 import pytest  # noqa: F401
 from flask.testing import FlaskClient
@@ -3651,5 +3651,7 @@ class TestScheduledPaymentChecks:
             MockScheduler.return_value = mock_sched
             with patch.dict('sys.modules', {'apscheduler.schedulers.background': MagicMock(BackgroundScheduler=MockScheduler)}):
                 _schedule_payment_checks()
-            assert mock_sched.add_job.call_count == 2
+            mock_sched.add_job.assert_called_once_with(
+                ANY, 'interval', minutes=15, id='payment_check'
+            )
             assert mock_sched.start.called

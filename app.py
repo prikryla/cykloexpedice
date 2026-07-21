@@ -1884,7 +1884,8 @@ def admin_dashboard():
         'registrace': db.execute("SELECT COUNT(*) c FROM registrace WHERE status = 'approved'").fetchone()['c'],
         'ubytovani': db.execute('SELECT COUNT(*) c FROM ubytovani').fetchone()['c'],
         'payment_pending': db.execute("SELECT COUNT(*) c FROM registrace WHERE payment_status = 'pending'").fetchone()['c'],
-        'payment_paid': db.execute("SELECT COUNT(*) c FROM registrace WHERE payment_status = 'paid'").fetchone()['c'],
+        'payment_paid': db.execute("SELECT COUNT(*) c FROM registrace WHERE payment_status = 'paid'").fetchone()['c']
+            + db.execute("SELECT COUNT(*) c FROM registrace WHERE name IN ('Adam Přikryl', 'Michal Přikryl') AND payment_status != 'paid'").fetchone()['c'],
     }
     return render_template('admin/dashboard.html', stats=stats)
 
@@ -2646,10 +2647,9 @@ def _schedule_payment_checks():
         print('[PAY] APScheduler not installed, skipping payment checks')
         return
     scheduler = BackgroundScheduler(timezone='Europe/Prague')
-    scheduler.add_job(check_fio_payments, 'cron', hour=12, minute=0, id='payment_check_noon')
-    scheduler.add_job(check_fio_payments, 'cron', hour=20, minute=0, id='payment_check_evening')
+    scheduler.add_job(check_fio_payments, 'interval', minutes=15, id='payment_check')
     scheduler.start()
-    print('[PAY] Scheduled payment checks at 12:00 and 20:00')
+    print('[PAY] Scheduled payment checks every 15 minutes')
 
 
 if not os.environ.get('TESTING'):
