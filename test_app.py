@@ -3652,6 +3652,6 @@ class TestScheduledPaymentChecks:
             with patch.dict('sys.modules', {'apscheduler.schedulers.background': MagicMock(BackgroundScheduler=MockScheduler)}):
                 _schedule_payment_checks()
             mock_sched.add_job.assert_called_once_with(
-                ANY, 'interval', minutes=15, id='payment_check'
+                ANY, 'cron', minute='0,15,30,45', id='payment_check'
             )
             assert mock_sched.start.called

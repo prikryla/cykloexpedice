@@ -2649,9 +2649,9 @@ def _schedule_payment_checks():
         print('[PAY] APScheduler not installed, skipping payment checks')
         return
     scheduler = BackgroundScheduler(timezone='Europe/Prague')
-    scheduler.add_job(check_fio_payments, 'interval', minutes=15, id='payment_check')
+    scheduler.add_job(check_fio_payments, 'cron', minute='0,15,30,45', id='payment_check')
     scheduler.start()
-    print('[PAY] Scheduled payment checks every 15 minutes')
+    print('[PAY] Scheduled payment checks at :00, :15, :30, :45')
 
 
 if not os.environ.get('TESTING'):
