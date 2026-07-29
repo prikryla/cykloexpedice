@@ -63,43 +63,45 @@
         </div>
 
         <div class="space-y-0">
-            <!-- Step 1 -->
-            <div class="flex gap-6 md:gap-8">
+            <!-- Step 1 – completed -->
+            <div class="flex gap-6 md:gap-8 opacity-60">
                 <div class="flex flex-col items-center">
-                    <div class="w-14 h-14 rounded-full bg-gold-500 flex items-center justify-center text-dark-900 font-display text-2xl shrink-0">1</div>
-                    <div class="w-0.5 bg-gold-500/30 flex-1 my-2"></div>
+                    <div class="w-14 h-14 rounded-full bg-green-500 flex items-center justify-center text-white font-display text-2xl shrink-0">
+                        <i class="bi bi-check-lg"></i>
+                    </div>
+                    <div class="w-0.5 bg-green-500/30 flex-1 my-2"></div>
                 </div>
                 <div class="pb-12">
                     <h3 class="font-display text-2xl text-dark-900 tracking-wide mb-2">PŘIHLAS SE</h3>
-                    <p class="text-gray-600 leading-relaxed">
-                        Vyplň závaznou online přihlášku v sekci Registrace nejpozději <strong>do 10. 7. 2026</strong>.
-                        Po vyplnění dostaneš potvrzení, následně přihlášku manuálně zkontrolujeme a schválíme.
+                    <p class="text-gray-500 leading-relaxed">
+                        Registrace byly uzavřeny 10. 7. 2026. Kapacita expedice byla naplněna.
                     </p>
-                    <a href="{{ url_for('registrace') }}" class="btn-gold mt-4 !py-3 !px-6 !text-xs inline-block">
-                        <i class="bi bi-pencil-square mr-1"></i> Přihlásit se
-                    </a>
+                    <span class="inline-flex items-center gap-1.5 mt-4 px-4 py-2 bg-gray-200 text-gray-500 text-xs font-semibold rounded-full cursor-default">
+                        <i class="bi bi-lock-fill"></i> Registrace uzavřena
+                    </span>
                 </div>
             </div>
 
-            <!-- Step 2 -->
-            <div class="flex gap-6 md:gap-8">
+            <!-- Step 2 – completed -->
+            <div class="flex gap-6 md:gap-8 opacity-60">
                 <div class="flex flex-col items-center">
-                    <div class="w-14 h-14 rounded-full bg-olive-500 flex items-center justify-center text-white font-display text-2xl shrink-0">2</div>
-                    <div class="w-0.5 bg-olive-500/30 flex-1 my-2"></div>
+                    <div class="w-14 h-14 rounded-full bg-green-500 flex items-center justify-center text-white font-display text-2xl shrink-0">
+                        <i class="bi bi-check-lg"></i>
+                    </div>
+                    <div class="w-0.5 bg-green-500/30 flex-1 my-2"></div>
                 </div>
                 <div class="pb-12">
                     <h3 class="font-display text-2xl text-dark-900 tracking-wide mb-2">UHRAĎ POPLATEK</h3>
-                    <p class="text-gray-600 leading-relaxed">
-                        Do 15. 7. 2026 ti zašleme e-mail s přesnou cenou a platebními údaji.
-                        Cena pokrývá 2× ubytování se snídaní a cestu autobusem z Melku do Blanska.
+                    <p class="text-gray-500 leading-relaxed">
+                        Platební údaje byly zaslány e-mailem všem přihlášeným účastníkům.
                         Platbu prosím uhraď nejpozději <strong>do 15. 8. 2026</strong>.
                     </p>
                     <div class="mt-4 bg-white rounded-xl p-5 border border-gray-200">
                         <div class="flex items-center gap-3 text-dark-900">
                             <i class="bi bi-cash-coin text-2xl text-gold-500"></i>
                             <div>
-                                <div class="text-sm text-gray-500">Orientační cena</div>
-                                <div class="font-bold text-xl">cca 3 900 Kč / osoba</div>
+                                <div class="text-sm text-gray-500">Cena</div>
+                                <div class="font-bold text-xl">3 850 Kč / osoba</div>
                             </div>
                         </div>
                     </div>
