@@ -4,13 +4,10 @@ import json
 import re
 import base64
 import secrets
-import smtplib
-import ssl
 import time as _time
 
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from email.utils import make_msgid
+import resend
+
 from datetime import datetime, date, timezone
 from functools import wraps
 from html import escape as html_escape
@@ -365,20 +362,6 @@ def init_db():
         if not existing:
             db.execute('INSERT INTO site_settings (key, value) VALUES (?, ?)', (key, value))
 
-    # Per-admin SMTP defaults
-    for username in ['michal', 'adam']:
-        smtp_defaults = {
-            f'smtp_host_{username}': '',
-            f'smtp_port_{username}': '587',
-            f'smtp_user_{username}': '',
-            f'smtp_password_{username}': '',
-            f'smtp_from_{username}': '',
-        }
-        for key, value in smtp_defaults.items():
-            existing = db.execute('SELECT key FROM site_settings WHERE key = ?', (key,)).fetchone()
-            if not existing:
-                db.execute('INSERT INTO site_settings (key, value) VALUES (?, ?)', (key, value))
-
     # Migrate old div-based email templates to table-based
     email_keys = ['email_submitted_body', 'email_approved_body', 'email_denied_body', 'email_payment_body']
     for key in email_keys:
@@ -403,71 +386,28 @@ def get_settings():
 
 # ── Email helper ──────────────────────────────────────────────────
 
-def send_email(to_email, subject, html_body, sender_username=None):
-    """Send email in a background thread. Uses the given admin's SMTP config, with fallback."""
-    db = _connect_db()
-    rows = db.execute('SELECT key, value FROM site_settings').fetchall()
-    settings = {row['key']: row['value'] for row in rows}
-    db.close()
+_RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
+_EMAIL_FROM = 'Cykloexpedice <info@cykloexpedice.cz>'
 
+
+def send_email(to_email, subject, html_body):
+    """Send email via Resend API in a background thread."""
     if not to_email:
         return
 
-    def _get_smtp(username):
-        return {
-            'host': settings.get(f'smtp_host_{username}', ''),
-            'port': settings.get(f'smtp_port_{username}', '587'),
-            'user': settings.get(f'smtp_user_{username}', ''),
-            'password': settings.get(f'smtp_password_{username}', ''),
-            'from': settings.get(f'smtp_from_{username}', ''),
-        }
-
-    smtp = None
-    candidates = [sender_username] if sender_username else []
-    for username in ['adam', 'michal']:
-        if username not in candidates:
-            candidates.append(username)
-
-    for username in candidates:
-        cfg = _get_smtp(username)
-        if cfg['host']:
-            smtp = cfg
-            break
-
-    if not smtp:
-        print(f'[EMAIL] No SMTP configured, skipping email to {to_email}: {subject}')
+    if not _RESEND_API_KEY:
+        print(f'[EMAIL] RESEND_API_KEY not set, skipping email to {to_email}: {subject}')
         return
 
     def _send():
         try:
-            from_addr = smtp['from'] or 'info@cykloexpedice.cz'
-
-            plain_text = re.sub(r'<br\s*/?>', '\n', html_body)
-            plain_text = re.sub(r'<[^>]+>', '', plain_text)
-            plain_text = re.sub(r'\n{3,}', '\n\n', plain_text).strip()
-
-            msg = MIMEMultipart('alternative')
-            msg['Subject'] = subject
-            msg['From'] = from_addr
-            msg['To'] = to_email
-            msg['Message-ID'] = make_msgid(domain='cykloexpedice.cz')
-            msg['List-Unsubscribe'] = '<mailto:info@cykloexpedice.cz?subject=Unsubscribe>'
-            msg['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click'
-            msg.attach(MIMEText(plain_text, 'plain', 'utf-8'))
-            msg.attach(MIMEText(html_body, 'html', 'utf-8'))
-
-            port = int(smtp['port'] or 587)
-            context = ssl.create_default_context()
-
-            if port == 465:
-                with smtplib.SMTP_SSL(smtp['host'], port, context=context) as server:
-                    server.login(smtp['user'], smtp['password'])
-                    server.send_message(msg)
-            else:
-                with smtplib.SMTP(smtp['host'], port) as server:
-                    server.starttls(context=context)
-                    server.login(smtp['user'], smtp['password'])
-                    server.send_message(msg)
+            resend.api_key = _RESEND_API_KEY
+            resend.Emails.send({
+                'from': _EMAIL_FROM,
+                'to': [to_email],
+                'subject': subject,
+                'html': html_body,
+            })
         except Exception as e:
             print(f'[EMAIL ERROR] {e}')
 
@@ -485,7 +425,7 @@ def send_bulk_notifications(recipients, subject, html_body):
     Thread(target=_run, daemon=True).start()
 
 
-def send_bulk_emails(email_items, sender_username=None):
+def send_bulk_emails(email_items):
     """Send a list of unique emails individually with a 3s delay between sends.
 
     email_items: list of (to_email, subject, html_body) tuples.
@@ -494,7 +434,7 @@ def send_bulk_emails(email_items, sender_username=None):
         for i, (to_email, subject, html_body) in enumerate(email_items):
             if i > 0:
                 _time.sleep(3)
-            send_email(to_email, subject, html_body, sender_username=sender_username)
+            send_email(to_email, subject, html_body)
         print(f'[EMAIL] Bulk emails dispatched to {len(email_items)} recipients')
     Thread(target=_run, daemon=True).start()
 
@@ -1257,29 +1197,11 @@ def admin_profile():
     if request.method == 'POST':
         email = request.form.get('email', '').strip()
         db.execute('UPDATE admins SET email = ? WHERE id = ?', (email, session['admin_id']))
-
-        # Save per-admin SMTP settings
-        username = admin['username']
-        for key in ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_password', 'smtp_from']:
-            val = request.form.get(key, '')
-            db.execute('INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)',
-                       (f'{key}_{username}', val))
-
         db.commit()
         flash('Profil uložen.', 'success')
         return redirect(url_for('admin_profile'))
 
-    # Load per-admin SMTP settings
-    settings = get_settings()
-    username = admin['username']
-    smtp = {
-        'smtp_host': settings.get(f'smtp_host_{username}', ''),
-        'smtp_port': settings.get(f'smtp_port_{username}', '587'),
-        'smtp_user': settings.get(f'smtp_user_{username}', ''),
-        'smtp_password': settings.get(f'smtp_password_{username}', ''),
-        'smtp_from': settings.get(f'smtp_from_{username}', ''),
-    }
-    return render_template('admin/profile.html', admin=admin, smtp=smtp)
+    return render_template('admin/profile.html', admin=admin)
 
 
 # ── User auth ────────────────────────────────────────────────────
@@ -2232,7 +2154,7 @@ def admin_registrace_approve(id):
         'contact_email': settings.get('contact_email', ''),
     }
     subject, html = render_email_template('email_approved', tpl_vars, settings)
-    send_email(reg['email'], subject, html, sender_username=session.get('admin_username'))
+    send_email(reg['email'], subject, html)
 
     flash(f'Registrace pro {reg["name"]} byla schválena. E-mail odeslán.', 'success')
     return redirect(url_for('admin_registrace'))
@@ -2268,7 +2190,7 @@ def admin_registrace_deny(id):
             'contact_email': settings.get('contact_email', ''),
         }
         subject, html = render_email_template('email_denied', tpl_vars, settings)
-        send_email(reg['email'], subject, html, sender_username=session.get('admin_username'))
+        send_email(reg['email'], subject, html)
 
         flash(f'Registrace pro {reg["name"]} byla zamítnuta. E-mail odeslán.', 'success')
         return redirect(url_for('admin_registrace'))
@@ -2393,8 +2315,7 @@ def admin_registrace_bulk_send_payment():
         email_items.append((reg['email'], subject, html))
 
     db.commit()
-    sender = session.get('admin_username')
-    send_bulk_emails(email_items, sender_username=sender)
+    send_bulk_emails(email_items)
     flash(f'Platební QR kód bude odeslán {len(email_items)} účastníkům.', 'success')
     return redirect(url_for('admin_registrace'))
 

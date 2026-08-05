@@ -1140,7 +1140,7 @@ class TestAktualitaEmailNotification:
     def test_bulk_notifications_calls_send_email_individually(self):
         calls = []
         original_sleep = _time_module.sleep
-        def tracking_send(to, subj, body, **kw):
+        def tracking_send(to, subj, body):
             calls.append(to)
         with patch('app.send_email', side_effect=tracking_send), \
              patch('app._time.sleep', side_effect=lambda _: None):
@@ -1641,18 +1641,13 @@ class TestPublicRouteEdgeCases:
         assert 'Test Content' in r.data.decode()
 
 
-# ── Admin profile & SMTP tests ──────────────────────────────────────
+# ── Admin profile tests ─────────────────────────────────────────────
 
 
 class TestAdminProfile:
     def test_save_profile_email(self, admin_client, app):
         r = admin_client.post('/admin/profile', data={
             'email': 'newemail@test.cz',
-            'smtp_host': 'smtp.test.cz',
-            'smtp_port': '587',
-            'smtp_user': 'user',
-            'smtp_password': 'pass',
-            'smtp_from': 'from@test.cz',
         }, follow_redirects=True)
         assert r.status_code == 200
         assert 'uložen' in r.data.decode().lower()
@@ -1662,8 +1657,12 @@ class TestAdminProfile:
             db = flask_app.get_db()
             admin = db.execute('SELECT email FROM admins WHERE username = ?', ('adam',)).fetchone()
             assert admin['email'] == 'newemail@test.cz'
-            smtp = db.execute("SELECT value FROM site_settings WHERE key = 'smtp_host_adam'").fetchone()
-            assert smtp['value'] == 'smtp.test.cz'
+
+    def test_profile_has_no_smtp_fields(self, admin_client):
+        r = admin_client.get('/admin/profile')
+        html = r.data.decode()
+        assert 'smtp_host' not in html
+        assert 'smtp_password' not in html
 
 
 # ── Admin CRUD edge cases ───────────────────────────────────────────
@@ -2033,67 +2032,80 @@ class TestRegistrationEdgeCases:
 
 
 class TestEmailSending:
-    def test_send_email_no_recipient(self, app):
-        from app import send_email
-        with app.app_context():
-            send_email('', 'Test', '<p>body</p>')
-
-    def test_send_email_no_smtp_configured(self, app):
-        from app import send_email
-        with app.app_context():
-            import app as flask_app
-            db = flask_app.get_db()
-            for username in ['adam', 'michal']:
-                db.execute("INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)",
-                           (f'smtp_host_{username}', ''))
-            db.commit()
-            send_email('test@test.cz', 'Test', '<p>body</p>')
-
-    def test_email_has_plain_text_and_headers(self, app):
+    def test_send_email_no_recipient(self, app, monkeypatch):
         import app as flask_app
-        with app.app_context():
-            db = flask_app.get_db()
-            db.execute("INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)",
-                       ('smtp_host_adam', 'smtp.resend.com'))
-            db.execute("INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)",
-                       ('smtp_port_adam', '465'))
-            db.execute("INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)",
-                       ('smtp_user_adam', 'resend'))
-            db.execute("INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)",
-                       ('smtp_password_adam', 'fake'))
-            db.execute("INSERT OR REPLACE INTO site_settings (key, value) VALUES (?, ?)",
-                       ('smtp_from_adam', 'info@cykloexpedice.cz'))
-            db.commit()
+        monkeypatch.setattr(flask_app, '_RESEND_API_KEY', 'test-key')
+        send_email = flask_app.send_email
+        send_email('', 'Test', '<p>body</p>')
 
+    def test_send_email_no_api_key(self, app, monkeypatch, capsys):
+        import app as flask_app
+        monkeypatch.setattr(flask_app, '_RESEND_API_KEY', '')
+        flask_app.send_email('test@test.cz', 'Test', '<p>body</p>')
+        captured = capsys.readouterr()
+        assert 'RESEND_API_KEY not set' in captured.out
+
+    def test_send_email_calls_resend_api(self, app, monkeypatch):
+        import app as flask_app
+        from threading import Event
+
+        monkeypatch.setattr(flask_app, '_RESEND_API_KEY', 're_test_key_123')
         captured = {}
+        done = Event()
 
-        def mock_send(self_srv, msg):
-            captured['msg'] = msg
+        def mock_send(params):
+            captured.update(params)
+            done.set()
+            return {'id': 'fake-id'}
 
-        with patch('smtplib.SMTP_SSL') as mock_smtp:
-            instance = MagicMock()
-            mock_smtp.return_value.__enter__ = MagicMock(return_value=instance)
-            mock_smtp.return_value.__exit__ = MagicMock(return_value=False)
-            instance.send_message = lambda msg: captured.update({'msg': msg})
+        with patch('app.resend.Emails.send', side_effect=mock_send):
+            flask_app.send_email('user@test.cz', 'Test Subject', '<p>Hello</p>')
+            done.wait(timeout=5)
 
-            with app.app_context():
-                flask_app.send_email('test@test.cz', 'Test Subject', '<p>Hello <b>world</b></p>')
+        assert captured['to'] == ['user@test.cz']
+        assert captured['subject'] == 'Test Subject'
+        assert captured['html'] == '<p>Hello</p>'
+        assert captured['from'] == 'Cykloexpedice <info@cykloexpedice.cz>'
 
-            import time
-            time.sleep(0.5)
+    def test_send_email_handles_api_error(self, app, monkeypatch, capsys):
+        import app as flask_app
+        from threading import Event
 
-        msg = captured.get('msg')
-        if msg:
-            payloads = msg.get_payload()
-            types = [p.get_content_type() for p in payloads]
-            assert 'text/plain' in types
-            assert 'text/html' in types
-            plain_part = [p for p in payloads if p.get_content_type() == 'text/plain'][0]
-            plain_text = plain_part.get_payload(decode=True).decode()
-            assert 'Hello' in plain_text
-            assert '<p>' not in plain_text
-            assert msg['List-Unsubscribe'] is not None
-            assert 'cykloexpedice.cz' in msg['Message-ID']
+        monkeypatch.setattr(flask_app, '_RESEND_API_KEY', 're_test_key_123')
+        done = Event()
+
+        def mock_send(params):
+            done.set()
+            raise Exception('API rate limit exceeded')
+
+        with patch('app.resend.Emails.send', side_effect=mock_send):
+            flask_app.send_email('user@test.cz', 'Subj', '<p>body</p>')
+            done.wait(timeout=5)
+
+        import time
+        time.sleep(0.1)
+        captured = capsys.readouterr()
+        assert 'EMAIL ERROR' in captured.out
+
+    def test_send_email_runs_in_background_thread(self, app, monkeypatch):
+        import app as flask_app
+        from threading import Event
+        import threading
+
+        monkeypatch.setattr(flask_app, '_RESEND_API_KEY', 're_test_key_123')
+        thread_names = []
+        done = Event()
+
+        def mock_send(params):
+            thread_names.append(threading.current_thread().name)
+            done.set()
+            return {'id': 'fake-id'}
+
+        with patch('app.resend.Emails.send', side_effect=mock_send):
+            flask_app.send_email('user@test.cz', 'Subj', '<p>body</p>')
+            done.wait(timeout=5)
+
+        assert thread_names[0] != threading.main_thread().name
 
 
 # ── YouTube embed converter tests ──────────────────────────────────
