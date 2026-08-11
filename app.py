@@ -25,11 +25,11 @@ import bcrypt
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from vokativ import vokativ as _vokativ
+from werkzeug.middleware.proxy_fix import ProxyFix
 
-VERSION = '1.4.0'
+VERSION = '1.5.0'
 
 app = Flask(__name__)
-from werkzeug.middleware.proxy_fix import ProxyFix
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__), 'static', 'uploads')
@@ -2317,6 +2317,54 @@ def admin_registrace_bulk_send_payment():
     db.commit()
     send_bulk_emails(email_items)
     flash(f'Platební QR kód bude odeslán {len(email_items)} účastníkům.', 'success')
+    return redirect(url_for('admin_registrace'))
+
+
+@app.route('/admin/registrace/<int:id>/resend-payment', methods=['POST'])
+@login_required
+def admin_registrace_resend_payment(id):
+    db = get_db()
+    reg = db.execute(
+        "SELECT * FROM registrace WHERE id = ? AND payment_status = 'pending'", (id,)
+    ).fetchone()
+    if not reg:
+        abort(404)
+
+    settings = get_settings()
+    iban = settings.get('bank_iban', '')
+    bank_account = settings.get('bank_account', '')
+
+    if not iban:
+        flash('Není nastaven IBAN. Zkontrolujte nastavení.', 'error')
+        return redirect(url_for('admin_registrace'))
+
+    vs = reg['variable_symbol'] or reg['id']
+    amount = reg['payment_amount'] or float(settings.get('payment_amount', 0))
+    name_parts = reg['name'].strip().split()
+    payment_note = 'WACHAU_' + '_'.join(name_parts)
+
+    qr_b64 = generate_payment_qr(iban, amount, vs, payment_note)
+    qr_html = f'<p style="text-align: center; margin: 25px 0;"><img src="data:image/png;base64,{qr_b64}" alt="QR platba" style="width: 250px; height: 250px;"></p>'
+
+    event_name = settings.get('event_name', 'Cykloexpedice')
+    event_year = settings.get('event_year', '')
+    tpl_vars = {
+        'name': reg['name'],
+        'event_name': event_name,
+        'event_year': event_year,
+        'bank_account': bank_account,
+        'amount': f'{amount:.0f}',
+        'vs': str(vs),
+        'payment_note': payment_note,
+        'qr_code': qr_html,
+        'contact_name_1': settings.get('contact_name_1', ''),
+        'contact_name_2': settings.get('contact_name_2', ''),
+        'contact_email': settings.get('contact_email', ''),
+    }
+    subject, html = render_email_template('email_payment', tpl_vars, settings)
+    send_email(reg['email'], subject, html)
+
+    flash(f'Platební údaje znovu odeslány na {reg["email"]}.', 'success')
     return redirect(url_for('admin_registrace'))
 
 
