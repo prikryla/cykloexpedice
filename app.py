@@ -25,11 +25,11 @@ import bcrypt
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from vokativ import vokativ as _vokativ
+from werkzeug.middleware.proxy_fix import ProxyFix
 
-VERSION = '1.4.0'
+VERSION = '1.5.0'
 
 app = Flask(__name__)
-from werkzeug.middleware.proxy_fix import ProxyFix
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__), 'static', 'uploads')
