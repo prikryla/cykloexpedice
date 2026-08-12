@@ -46,4 +46,4 @@ See `.env.example` for required configuration:
 
 ## License
 
-Private project.
+[MIT](LICENSE)
