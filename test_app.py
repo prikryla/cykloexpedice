@@ -425,11 +425,15 @@ class TestAdminAuth:
         assert '/admin/login' in r.headers['Location']
 
     def test_logout(self, admin_client):
-        r = admin_client.get('/admin/logout', follow_redirects=True)
+        r = admin_client.post('/admin/logout', follow_redirects=True)
         assert r.status_code == 200
         # After logout, admin page should redirect
         r2 = admin_client.get('/admin')
         assert r2.status_code == 302
+
+    def test_logout_rejects_get(self, admin_client):
+        r = admin_client.get('/admin/logout')
+        assert r.status_code == 405
 
     def test_first_login_redirects_to_set_password(self, app, client):
         # Admin with no password_hash should redirect to set-password
@@ -1545,6 +1549,21 @@ class TestSecurityHeaders:
     def test_session_cookie_samesite(self, app):
         assert app.config['SESSION_COOKIE_SAMESITE'] == 'Lax'
 
+    def test_referrer_policy(self, client):
+        r = client.get('/')
+        assert r.headers.get('Referrer-Policy') == 'strict-origin-when-cross-origin'
+
+    def test_permissions_policy(self, client):
+        r = client.get('/')
+        assert r.headers.get('Permissions-Policy') == 'camera=(), microphone=(), geolocation=()'
+
+    def test_session_lifetime_configured(self, app):
+        assert app.config['PERMANENT_SESSION_LIFETIME'] == 8 * 60 * 60
+
+    def test_debug_disabled_by_default(self):
+        import app as flask_app
+        assert flask_app.app.debug is False
+
 
 # ── Context processor tests ─────────────────────────────────────────
 
@@ -2137,13 +2156,13 @@ class TestYoutubeToEmbed:
         result = youtube_to_embed('https://youtube.com/watch?v=abc123_-X')
         assert result == 'https://www.youtube-nocookie.com/embed/abc123_-X'
 
-    def test_invalid_url_returned_as_is(self):
+    def test_invalid_url_returns_none(self):
         from app import youtube_to_embed
-        assert youtube_to_embed('https://example.com/video') == 'https://example.com/video'
+        assert youtube_to_embed('https://example.com/video') is None
 
-    def test_empty_string(self):
+    def test_empty_string_returns_none(self):
         from app import youtube_to_embed
-        assert youtube_to_embed('') == ''
+        assert youtube_to_embed('') is None
 
 
 # ── Contact page content tests ─────────────────────────────────────
@@ -2770,7 +2789,7 @@ class TestUserRegistration:
             'action': 'register', 'email': 'dup@test.cz',
             'name': 'Jan', 'password': 'heslo123', 'password2': 'heslo123',
         })
-        client.get('/logout')
+        client.post('/logout')
         resp = client.post('/login', data={
             'action': 'register', 'email': 'dup@test.cz',
             'name': 'Jan2', 'password': 'heslo456', 'password2': 'heslo456',
@@ -2835,7 +2854,7 @@ class TestUserLogin:
             'action': 'register', 'email': 'login@test.cz',
             'name': 'Jan', 'password': 'heslo123', 'password2': 'heslo123',
         })
-        client.get('/logout')
+        client.post('/logout')
         resp = client.post('/login', data={
             'action': 'login', 'email': 'login@test.cz', 'password': 'heslo123',
         }, follow_redirects=True)
@@ -2846,7 +2865,7 @@ class TestUserLogin:
             'action': 'register', 'email': 'wrong@test.cz',
             'name': 'Jan', 'password': 'heslo123', 'password2': 'heslo123',
         })
-        client.get('/logout')
+        client.post('/logout')
         resp = client.post('/login', data={
             'action': 'login', 'email': 'wrong@test.cz', 'password': 'badpass1',
         }, follow_redirects=True)
@@ -2864,10 +2883,14 @@ class TestUserLogin:
         assert 'check_email' in resp.data.decode()
 
     def test_logout(self, user_client):
-        resp = user_client.get('/logout', follow_redirects=True)
+        resp = user_client.post('/logout', follow_redirects=True)
         assert resp.status_code == 200
         resp = user_client.get('/app')
         assert resp.status_code == 302
+
+    def test_logout_rejects_get(self, user_client):
+        resp = user_client.get('/logout')
+        assert resp.status_code == 405
 
 
 class TestUserForgotPassword:

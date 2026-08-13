@@ -37,6 +37,7 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_ENV') == 'production'
+app.config['PERMANENT_SESSION_LIFETIME'] = 8 * 60 * 60
 
 limiter = Limiter(get_remote_address, app=app, default_limits=[], storage_uri="memory://")
 
@@ -84,6 +85,10 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 def set_security_headers(response):
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=()'
+    if os.environ.get('FLASK_ENV') == 'production':
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
     return response
 
 
@@ -814,7 +819,7 @@ def youtube_to_embed(url):
         m = re.match(r'(?:https?://)?(?:www\.)?youtube-nocookie\.com/embed/([A-Za-z0-9_-]+)', url)
     if m:
         return f'https://www.youtube-nocookie.com/embed/{m.group(1)}'
-    return url
+    return None
 
 
 def save_file(file, prefix=''):
@@ -903,6 +908,12 @@ def forbidden(e):
                          'Nemáte oprávnění pro přístup k tomuto zdroji.')
 
 
+@app.errorhandler(405)
+def method_not_allowed(e):
+    return _render_error(405, 'Metoda není povolena',
+                         'Tato metoda není pro danou adresu povolena.')
+
+
 @app.errorhandler(429)
 def ratelimit_handler(e):
     return _render_error(429, 'Příliš mnoho požadavků',
@@ -911,6 +922,9 @@ def ratelimit_handler(e):
 
 @app.errorhandler(Exception)
 def handle_exception(e):
+    from werkzeug.exceptions import HTTPException
+    if isinstance(e, HTTPException):
+        raise e
     if isinstance(e, psycopg2.OperationalError):
         print(f'[DB ERROR] {e}')
         return _render_error(503, 'Služba nedostupná',
@@ -942,7 +956,7 @@ def etapa(number):
     if not row:
         abort(404)
     youtube_raw = json.loads(row['youtube_links']) if row['youtube_links'] else []
-    youtube = [youtube_to_embed(u) for u in youtube_raw]
+    youtube = [u for u in (youtube_to_embed(u) for u in youtube_raw) if u]
     prev_e = db.execute('SELECT number FROM etapy WHERE number < ? ORDER BY number DESC LIMIT 1', (number,)).fetchone()
     next_e = db.execute('SELECT number FROM etapy WHERE number > ? ORDER BY number ASC LIMIT 1', (number,)).fetchone()
     return render_template('etapa.html', etapa=row, youtube=youtube,
@@ -1111,6 +1125,7 @@ def admin_login():
             return redirect(url_for('admin_set_password'))
 
         if bcrypt.checkpw(password.encode(), admin['password_hash'].encode()):
+            session.permanent = True
             session['admin_id'] = admin['id']
             session['admin_username'] = admin['username']
             return redirect(url_for('admin_dashboard'))
@@ -1148,7 +1163,7 @@ def admin_set_password():
     return render_template('admin/set_password.html')
 
 
-@app.route('/admin/logout')
+@app.route('/admin/logout', methods=['POST'])
 def admin_logout():
     session.clear()
     return redirect(url_for('admin_login'))
@@ -1237,6 +1252,7 @@ def user_login():
             db = get_db()
             user = db.execute('SELECT * FROM users WHERE email = ?', (email,)).fetchone()
             if user and bcrypt.checkpw(password.encode(), user['password_hash'].encode()):
+                session.permanent = True
                 session['user_id'] = user['id']
                 session['user_name'] = user['name']
                 return redirect(url_for('user_app'))
@@ -1270,6 +1286,7 @@ def user_login():
             db.commit()
 
             user = db.execute('SELECT * FROM users WHERE email = ?', (email,)).fetchone()
+            session.permanent = True
             session['user_id'] = user['id']
             session['user_name'] = user['name']
             return redirect(url_for('user_app'))
@@ -1277,7 +1294,7 @@ def user_login():
     return render_template('user/login.html', step='email')
 
 
-@app.route('/logout')
+@app.route('/logout', methods=['POST'])
 def user_logout():
     session.pop('user_id', None)
     session.pop('user_name', None)
@@ -1724,7 +1741,7 @@ def admin_forgot_password():
                 '<td style="background-color:#fbb01f;padding:8px 24px;font-family:Arial,sans-serif;font-size:13px;font-weight:700;color:#1c1c1b;text-transform:uppercase;letter-spacing:2px;">OBNOVENÍ HESLA</td>'
                 '</tr></table></td></tr>'
                 '<tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:26px;color:#374151;">'
-                f'<p style="margin:0 0 16px;">Dobrý den, <strong>{admin["username"]}</strong>,</p>'
+                f'<p style="margin:0 0 16px;">Dobrý den, <strong>{html_escape(admin["username"])}</strong>,</p>'
                 '<p style="margin:0 0 16px;">obdrželi jsme žádost o obnovení hesla k vašemu účtu v administraci Cykloexpedice.</p>'
                 '<p style="margin:0 0 24px;">Klikněte na tlačítko níže pro nastavení nového hesla:</p>'
                 '</td></tr>'
@@ -2631,4 +2648,4 @@ if not os.environ.get('TESTING'):
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    app.run(debug=True, host='0.0.0.0', port=port)
+    app.run(debug=os.environ.get('FLASK_DEBUG', '0') == '1', host='0.0.0.0', port=port)
