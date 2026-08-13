@@ -32,9 +32,12 @@
                     <i class="bi bi-eye"></i> Web
                 </a>
                 <span class="text-sm text-gray-400">{{ session.admin_username }}</span>
-                <a href="{{ url_for('admin_logout') }}" class="text-sm text-red-400 hover:text-red-300">
-                    <i class="bi bi-box-arrow-right"></i> Odhlásit
-                </a>
+                <form method="POST" action="{{ url_for('admin_logout') }}" class="inline">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="text-sm text-red-400 hover:text-red-300">
+                        <i class="bi bi-box-arrow-right"></i> Odhlásit
+                    </button>
+                </form>
             </div>
         </div>
     </div>
