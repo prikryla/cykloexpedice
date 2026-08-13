@@ -27,7 +27,7 @@ from flask_limiter.util import get_remote_address
 from vokativ import vokativ as _vokativ
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-VERSION = '1.5.0'
+VERSION = '1.6.0'
 
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
