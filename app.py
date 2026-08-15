@@ -27,7 +27,7 @@ from flask_limiter.util import get_remote_address
 from vokativ import vokativ as _vokativ
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-VERSION = '1.6.0'
+VERSION = '1.6.1'
 
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
@@ -58,6 +58,9 @@ def check_csrf():
     if request.method == 'POST':
         token = request.form.get('_csrf_token') or request.headers.get('X-CSRF-Token')
         if not token or token != session.get('_csrf_token'):
+            if request.path.startswith('/admin') and 'admin_id' not in session:
+                flash('Platnost přihlášení vypršela, přihlaste se prosím znovu.', 'warning')
+                return redirect(url_for('admin_login'))
             abort(403)
 
 ALLOWED_UPLOAD_EXTENSIONS = {'jpg', 'jpeg', 'png', 'gif', 'webp', 'gpx', 'zip', 'pdf'}
