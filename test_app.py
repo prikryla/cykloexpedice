@@ -3808,7 +3808,6 @@ class TestGeoLookup:
                 'status': 'success',
                 'country': 'Czech Republic',
                 'countryCode': 'CZ',
-                'city': 'Prague',
             }
             with patch('app.requests.get', return_value=mock_resp):
                 flask_app._lookup_geo('1.2.3.4', 'abc123')
@@ -3817,7 +3816,6 @@ class TestGeoLookup:
         assert row is not None
         assert row['country_code'] == 'CZ'
         assert row['country_name'] == 'Czech Republic'
-        assert row['city'] == 'Prague'
 
     def test_lookup_failure_does_not_crash(self, app):
         import app as flask_app
@@ -3845,20 +3843,20 @@ class TestGeoLookup:
         with app.app_context():
             db = flask_app.get_db()
             db.execute(
-                "INSERT INTO ip_geolocation (ip_hash, country_code, country_name, city) "
-                "VALUES ('dup123', 'CZ', 'Czech Republic', 'Brno')",
+                "INSERT INTO ip_geolocation (ip_hash, country_code, country_name) "
+                "VALUES ('dup123', 'CZ', 'Czech Republic')",
             )
             db.commit()
             mock_resp = MagicMock()
             mock_resp.status_code = 200
             mock_resp.json.return_value = {
-                'status': 'success', 'country': 'Czech Republic',
-                'countryCode': 'CZ', 'city': 'Prague',
+                'status': 'success', 'country': 'Slovakia',
+                'countryCode': 'SK',
             }
             with patch('app.requests.get', return_value=mock_resp):
                 flask_app._lookup_geo('5.6.7.8', 'dup123')
-            row = db.execute("SELECT city FROM ip_geolocation WHERE ip_hash = 'dup123'").fetchone()
-        assert row['city'] == 'Brno'
+            row = db.execute("SELECT country_code FROM ip_geolocation WHERE ip_hash = 'dup123'").fetchone()
+        assert row['country_code'] == 'CZ'
 
     def test_geo_thread_spawned_for_new_ip(self, app, client):
         with patch('app.Thread') as MockThread:
@@ -3875,8 +3873,8 @@ class TestGeoLookup:
         with app.app_context():
             db = flask_app.get_db()
             db.execute(
-                "INSERT INTO ip_geolocation (ip_hash, country_code, country_name, city) "
-                "VALUES (?, 'CZ', 'Czech Republic', 'Prague')",
+                "INSERT INTO ip_geolocation (ip_hash, country_code, country_name) "
+                "VALUES (?, 'CZ', 'Czech Republic')",
                 (ip_hash,),
             )
             db.commit()
@@ -3924,14 +3922,13 @@ class TestAdminNavstevnost:
                 "VALUES ('geo1', '/', '', '')",
             )
             db.execute(
-                "INSERT INTO ip_geolocation (ip_hash, country_code, country_name, city) "
-                "VALUES ('geo1', 'CZ', 'Czech Republic', 'Prague')",
+                "INSERT INTO ip_geolocation (ip_hash, country_code, country_name) "
+                "VALUES ('geo1', 'CZ', 'Czech Republic')",
             )
             db.commit()
         resp = admin_client.get('/admin/navstevnost')
         html = resp.data.decode()
         assert 'Czech Republic' in html
-        assert 'Prague' in html
 
     def test_period_filter_today(self, admin_client):
         resp = admin_client.get('/admin/navstevnost?period=today')

@@ -149,7 +149,7 @@ def _lookup_geo(ip, ip_hash):
     try:
         resp = requests.get(
             f'http://ip-api.com/json/{ip}',
-            params={'fields': 'status,country,countryCode,city'},
+            params={'fields': 'status,country,countryCode'},
             timeout=5,
         )
         if resp.status_code == 200:
@@ -158,11 +158,11 @@ def _lookup_geo(ip, ip_hash):
                 db = _connect_db()
                 try:
                     db.execute(
-                        'INSERT INTO ip_geolocation (ip_hash, country_code, country_name, city) '
-                        'VALUES (?, ?, ?, ?) '
+                        'INSERT INTO ip_geolocation (ip_hash, country_code, country_name) '
+                        'VALUES (?, ?, ?) '
                         'ON CONFLICT (ip_hash) DO NOTHING',
                         (ip_hash, data.get('countryCode', ''),
-                         data.get('country', ''), data.get('city', '')),
+                         data.get('country', '')),
                     )
                     db.commit()
                 finally:
@@ -318,7 +318,6 @@ def init_db():
             ip_hash TEXT PRIMARY KEY,
             country_code TEXT,
             country_name TEXT,
-            city TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''',
     ]:
         db.execute(stmt)
@@ -1993,14 +1992,6 @@ def admin_navstevnost():
         date_params,
     ).fetchall()
 
-    cities = db.execute(
-        f'SELECT g.city, COUNT(*) as views, COUNT(DISTINCT p.ip_hash) as unique_visitors '
-        f'FROM page_views p JOIN ip_geolocation g ON p.ip_hash = g.ip_hash '
-        f"WHERE g.country_code = 'CZ' AND g.city != '' {date_clause} "
-        f'GROUP BY g.city ORDER BY views DESC LIMIT 20',
-        date_params,
-    ).fetchall()
-
     chart_start = (today - timedelta(days=29)).isoformat()
     daily_rows = db.execute(
         'SELECT DATE(created_at) as day, COUNT(*) as views, '
@@ -2023,7 +2014,7 @@ def admin_navstevnost():
 
     recent = db.execute(
         'SELECT p.path, p.user_agent, p.referrer, p.created_at, '
-        'g.country_name, g.country_code, g.city '
+        'g.country_name, g.country_code '
         'FROM page_views p LEFT JOIN ip_geolocation g ON p.ip_hash = g.ip_hash '
         'ORDER BY p.created_at DESC LIMIT 50',
     ).fetchall()
@@ -2032,7 +2023,7 @@ def admin_navstevnost():
         'admin/navstevnost.html',
         total_views=total_views, unique_visitors=unique_visitors,
         today_views=today_views, today_unique=today_unique,
-        pages=pages, countries=countries, cities=cities,
+        pages=pages, countries=countries,
         daily_views=daily_views, recent=recent, period=period,
     )
 

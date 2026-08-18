@@ -110,33 +110,6 @@
     </div>
 </div>
 
-<!-- Czech cities -->
-{% if cities %}
-<div class="bg-white rounded-xl p-6 shadow mb-8">
-    <h2 class="font-bold mb-4">🇨🇿 Města v Česku</h2>
-    <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-            <thead>
-                <tr class="text-left text-gray-500 border-b">
-                    <th class="pb-2">Město</th>
-                    <th class="pb-2 text-right">Zobrazení</th>
-                    <th class="pb-2 text-right">Unikátní</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for c in cities %}
-                <tr class="border-b border-gray-100">
-                    <td class="py-2">{{ c.city }}</td>
-                    <td class="py-2 text-right">{{ c.views }}</td>
-                    <td class="py-2 text-right text-gray-500">{{ c.unique_visitors }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-{% endif %}
-
 <!-- Recent visitors -->
 <div class="bg-white rounded-xl p-6 shadow">
     <h2 class="font-bold mb-4">Poslední návštěvy</h2>
@@ -158,8 +131,7 @@
                     <td class="py-2 font-mono text-xs">{{ v.path }}</td>
                     <td class="py-2 whitespace-nowrap">
                         {% if v.country_code %}
-                            {{ v.country_code|flag }}
-                            {% if v.city %}{{ v.city }}{% else %}{{ v.country_name }}{% endif %}
+                            {{ v.country_code|flag }} {{ v.country_name }}
                         {% else %}
                             <span class="text-gray-400">–</span>
                         {% endif %}
