@@ -1,0 +1,230 @@
+{% extends "admin/base.html" %}
+{% block title %}Návštěvnost{% endblock %}
+{% block main_class %}max-w-6xl{% endblock %}
+
+{% block head_extra %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold mb-6">Návštěvnost</h1>
+
+<!-- Period filter -->
+<div class="flex flex-wrap gap-2 mb-6">
+    {% for val, label in [('today', 'Dnes'), ('7', '7 dní'), ('30', '30 dní'), ('all', 'Vše')] %}
+    <a href="{{ url_for('admin_navstevnost', period=val) }}"
+       class="px-4 py-2 rounded-full text-sm font-medium transition
+              {% if period == val %}bg-gray-900 text-white{% else %}bg-white text-gray-600 hover:bg-gray-200{% endif %}">
+        {{ label }}
+    </a>
+    {% endfor %}
+</div>
+
+<!-- Stats cards -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+    <div class="bg-white rounded-xl p-6 shadow">
+        <div class="text-3xl font-bold text-cyan-500">{{ total_views }}</div>
+        <div class="text-gray-500 mt-1"><i class="bi bi-eye"></i> Zobrazení</div>
+    </div>
+    <div class="bg-white rounded-xl p-6 shadow">
+        <div class="text-3xl font-bold text-teal-500">{{ unique_visitors }}</div>
+        <div class="text-gray-500 mt-1"><i class="bi bi-people"></i> Unikátní návštěvníci</div>
+    </div>
+    <div class="bg-white rounded-xl p-6 shadow">
+        <div class="text-3xl font-bold text-blue-500">{{ today_views }}</div>
+        <div class="text-gray-500 mt-1"><i class="bi bi-calendar-day"></i> Dnes zobrazení</div>
+    </div>
+    <div class="bg-white rounded-xl p-6 shadow">
+        <div class="text-3xl font-bold text-indigo-500">{{ today_unique }}</div>
+        <div class="text-gray-500 mt-1"><i class="bi bi-person-check"></i> Dnes unikátní</div>
+    </div>
+</div>
+
+<!-- Daily views chart -->
+{% if daily_views %}
+<div class="bg-white rounded-xl p-6 shadow mb-8">
+    <h2 class="font-bold mb-4">Návštěvnost za posledních 30 dní</h2>
+    <div style="height: 260px;">
+        <canvas id="dailyChart"></canvas>
+    </div>
+</div>
+{% endif %}
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+    <!-- Top pages -->
+    <div class="bg-white rounded-xl p-6 shadow">
+        <h2 class="font-bold mb-4">Stránky</h2>
+        {% if pages %}
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="text-left text-gray-500 border-b">
+                        <th class="pb-2">Stránka</th>
+                        <th class="pb-2 text-right">Zobrazení</th>
+                        <th class="pb-2 text-right">Unikátní</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in pages %}
+                    <tr class="border-b border-gray-100">
+                        <td class="py-2 font-mono text-xs">{{ p.path }}</td>
+                        <td class="py-2 text-right">{{ p.views }}</td>
+                        <td class="py-2 text-right text-gray-500">{{ p.unique_visitors }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-gray-400 text-sm">Zatím žádná data.</p>
+        {% endif %}
+    </div>
+
+    <!-- Countries -->
+    <div class="bg-white rounded-xl p-6 shadow">
+        <h2 class="font-bold mb-4">Země</h2>
+        {% if countries %}
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="text-left text-gray-500 border-b">
+                        <th class="pb-2">Země</th>
+                        <th class="pb-2 text-right">Zobrazení</th>
+                        <th class="pb-2 text-right">Unikátní</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in countries %}
+                    <tr class="border-b border-gray-100">
+                        <td class="py-2">{{ c.country_code|flag }} {{ c.country_name }}</td>
+                        <td class="py-2 text-right">{{ c.views }}</td>
+                        <td class="py-2 text-right text-gray-500">{{ c.unique_visitors }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-gray-400 text-sm">Zatím žádná geolokační data.</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Czech cities -->
+{% if cities %}
+<div class="bg-white rounded-xl p-6 shadow mb-8">
+    <h2 class="font-bold mb-4">🇨🇿 Města v Česku</h2>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="text-left text-gray-500 border-b">
+                    <th class="pb-2">Město</th>
+                    <th class="pb-2 text-right">Zobrazení</th>
+                    <th class="pb-2 text-right">Unikátní</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in cities %}
+                <tr class="border-b border-gray-100">
+                    <td class="py-2">{{ c.city }}</td>
+                    <td class="py-2 text-right">{{ c.views }}</td>
+                    <td class="py-2 text-right text-gray-500">{{ c.unique_visitors }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- Recent visitors -->
+<div class="bg-white rounded-xl p-6 shadow">
+    <h2 class="font-bold mb-4">Poslední návštěvy</h2>
+    {% if recent %}
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="text-left text-gray-500 border-b">
+                    <th class="pb-2">Čas</th>
+                    <th class="pb-2">Stránka</th>
+                    <th class="pb-2">Lokace</th>
+                    <th class="pb-2">Zdroj</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for v in recent %}
+                <tr class="border-b border-gray-100">
+                    <td class="py-2 whitespace-nowrap text-xs text-gray-500">{{ v.created_at|prague_time('%d.%m. %H:%M') }}</td>
+                    <td class="py-2 font-mono text-xs">{{ v.path }}</td>
+                    <td class="py-2 whitespace-nowrap">
+                        {% if v.country_code %}
+                            {{ v.country_code|flag }}
+                            {% if v.city %}{{ v.city }}{% else %}{{ v.country_name }}{% endif %}
+                        {% else %}
+                            <span class="text-gray-400">–</span>
+                        {% endif %}
+                    </td>
+                    <td class="py-2 text-xs text-gray-500 max-w-xs truncate">
+                        {% if v.referrer %}{{ v.referrer }}{% else %}<span class="text-gray-300">–</span>{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-gray-400 text-sm">Zatím žádná data.</p>
+    {% endif %}
+</div>
+
+{% if daily_views %}
+<script>
+(function() {
+    var data = {{ daily_views|tojson }};
+    var ctx = document.getElementById('dailyChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: data.map(function(d) {
+                var parts = d.date.split('-');
+                return parts[2] + '.' + parts[1] + '.';
+            }),
+            datasets: [
+                {
+                    label: 'Zobrazení',
+                    data: data.map(function(d) { return d.views; }),
+                    backgroundColor: 'rgba(6, 182, 212, 0.7)',
+                    borderRadius: 3,
+                    order: 2
+                },
+                {
+                    label: 'Unikátní',
+                    data: data.map(function(d) { return d.unique; }),
+                    backgroundColor: 'rgba(20, 184, 166, 0.7)',
+                    borderRadius: 3,
+                    order: 1
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'top', labels: { boxWidth: 12, padding: 16 } }
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 10, font: { size: 11 } }
+                },
+                y: {
+                    beginAtZero: true,
+                    ticks: { precision: 0, font: { size: 11 } }
+                }
+            }
+        }
+    });
+})();
+</script>
+{% endif %}
+{% endblock %}

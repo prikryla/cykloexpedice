@@ -79,6 +79,10 @@
                    class="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-700 {% if 'sms' in request.endpoint %}bg-gray-700 text-white{% endif %}">
                     <i class="bi bi-phone"></i> SMS počasí
                 </a>
+                <a href="{{ url_for('admin_navstevnost') }}"
+                   class="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-700 {% if 'navstevnost' in request.endpoint %}bg-gray-700 text-white{% endif %}">
+                    <i class="bi bi-graph-up"></i> Návštěvnost
+                </a>
                 <a href="{{ url_for('admin_settings') }}"
                    class="flex items-center gap-3 px-3 py-2 rounded hover:bg-gray-700 {% if 'settings' in request.endpoint %}bg-gray-700 text-white{% endif %}">
                     <i class="bi bi-sliders"></i> Nastavení

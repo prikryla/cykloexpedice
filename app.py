@@ -2,13 +2,14 @@ import os
 import io
 import json
 import re
+import hashlib
 import base64
 import secrets
 import time as _time
 
 import resend
 
-from datetime import datetime, date, timezone
+from datetime import datetime, date, timedelta, timezone
 from functools import wraps
 from html import escape as html_escape
 from threading import Thread
@@ -27,7 +28,7 @@ from flask_limiter.util import get_remote_address
 from vokativ import vokativ as _vokativ
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-VERSION = '1.6.1'
+VERSION = '1.6.2'
 
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
@@ -76,6 +77,14 @@ def prague_time_filter(dt, fmt='%d.%m.%Y %H:%M:%S'):
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(PRAGUE_TZ).strftime(fmt)
 
+
+@app.template_filter('flag')
+def flag_filter(country_code):
+    if not country_code or len(country_code) != 2:
+        return ''
+    return ''.join(chr(ord(c) + 127397) for c in country_code.upper())
+
+
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
 FIO_API_TOKEN = os.environ.get('FIO_API_TOKEN', '')
 STRAVA_CLIENT_ID = os.environ.get('STRAVA_CLIENT_ID', '')
@@ -93,6 +102,73 @@ def set_security_headers(response):
     if os.environ.get('FLASK_ENV') == 'production':
         response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
     return response
+
+
+# ── Visitor tracking ─────────────────────────────────────────────
+
+PUBLIC_ENDPOINTS = frozenset({
+    'index', 'propozice', 'etapa', 'ubytovani',
+    'aktuality', 'fotky', 'kontakt', 'registrace',
+})
+
+
+@app.after_request
+def track_page_view(response):
+    if (request.method == 'GET'
+            and response.status_code == 200
+            and request.endpoint in PUBLIC_ENDPOINTS):
+        try:
+            ip = request.remote_addr or ''
+            if not ip:
+                return response
+            ip_hash = hashlib.sha256(ip.encode()).hexdigest()[:16]
+            path = request.path
+            user_agent = (request.headers.get('User-Agent') or '')[:500]
+            referrer = (request.headers.get('Referer') or '')[:500]
+
+            db = get_db()
+            db.execute(
+                'INSERT INTO page_views (ip_hash, path, user_agent, referrer) '
+                'VALUES (?, ?, ?, ?)',
+                (ip_hash, path, user_agent, referrer),
+            )
+            db.commit()
+
+            cached = db.execute(
+                'SELECT ip_hash FROM ip_geolocation WHERE ip_hash = ?',
+                (ip_hash,),
+            ).fetchone()
+            if not cached:
+                Thread(target=_lookup_geo, args=(ip, ip_hash), daemon=True).start()
+        except Exception:
+            pass
+    return response
+
+
+def _lookup_geo(ip, ip_hash):
+    try:
+        resp = requests.get(
+            f'http://ip-api.com/json/{ip}',
+            params={'fields': 'status,country,countryCode,city'},
+            timeout=5,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get('status') == 'success':
+                db = _connect_db()
+                try:
+                    db.execute(
+                        'INSERT INTO ip_geolocation (ip_hash, country_code, country_name, city) '
+                        'VALUES (?, ?, ?, ?) '
+                        'ON CONFLICT (ip_hash) DO NOTHING',
+                        (ip_hash, data.get('countryCode', ''),
+                         data.get('country', ''), data.get('city', '')),
+                    )
+                    db.commit()
+                finally:
+                    db.close()
+    except Exception:
+        pass
 
 
 # ── Database abstraction ─────────────────────────────────────────
@@ -231,9 +307,32 @@ def init_db():
             strava_activity_id BIGINT NOT NULL,
             device_name TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''',
+        '''CREATE TABLE IF NOT EXISTS page_views (
+            id SERIAL PRIMARY KEY,
+            ip_hash TEXT NOT NULL,
+            path TEXT NOT NULL,
+            user_agent TEXT,
+            referrer TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''',
+        '''CREATE TABLE IF NOT EXISTS ip_geolocation (
+            ip_hash TEXT PRIMARY KEY,
+            country_code TEXT,
+            country_name TEXT,
+            city TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''',
     ]:
         db.execute(stmt)
     db.commit()
+
+    for idx_stmt in [
+        'CREATE INDEX IF NOT EXISTS idx_page_views_created_at ON page_views(created_at)',
+        'CREATE INDEX IF NOT EXISTS idx_page_views_ip_hash ON page_views(ip_hash)',
+    ]:
+        try:
+            db.execute(idx_stmt)
+            db.commit()
+        except Exception:
+            db._conn.rollback()
 
     # Add payment columns to registrace if they don't exist (migration for existing DBs)
     for col_stmt in [
@@ -1822,6 +1921,7 @@ def admin_reset_password(token):
 @login_required
 def admin_dashboard():
     db = get_db()
+    today_str = date.today().isoformat()
     stats = {
         'etapy': db.execute('SELECT COUNT(*) c FROM etapy').fetchone()['c'],
         'aktuality': db.execute('SELECT COUNT(*) c FROM aktuality').fetchone()['c'],
@@ -1830,8 +1930,111 @@ def admin_dashboard():
         'payment_pending': db.execute("SELECT COUNT(*) c FROM registrace WHERE payment_status = 'pending'").fetchone()['c'],
         'payment_paid': db.execute("SELECT COUNT(*) c FROM registrace WHERE payment_status = 'paid'").fetchone()['c']
             + db.execute("SELECT COUNT(*) c FROM registrace WHERE name IN ('Adam Přikryl', 'Michal Přikryl') AND payment_status != 'paid'").fetchone()['c'],
+        'today_views': db.execute('SELECT COUNT(*) c FROM page_views WHERE created_at >= ?', (today_str,)).fetchone()['c'],
+        'today_unique': db.execute('SELECT COUNT(DISTINCT ip_hash) c FROM page_views WHERE created_at >= ?', (today_str,)).fetchone()['c'],
     }
     return render_template('admin/dashboard.html', stats=stats)
+
+
+# ── Admin: Návštěvnost ────────────────────────────────────────────
+
+@app.route('/admin/navstevnost')
+@login_required
+def admin_navstevnost():
+    db = get_db()
+    today = date.today()
+    today_str = today.isoformat()
+
+    period = request.args.get('period', '30')
+    if period == 'today':
+        start_str = today_str
+    elif period == '7':
+        start_str = (today - timedelta(days=7)).isoformat()
+    elif period == '30':
+        start_str = (today - timedelta(days=30)).isoformat()
+    elif period == 'all':
+        start_str = None
+    else:
+        start_str = (today - timedelta(days=30)).isoformat()
+        period = '30'
+
+    if start_str:
+        date_clause = 'AND p.created_at >= ?'
+        date_params = (start_str,)
+    else:
+        date_clause = ''
+        date_params = ()
+
+    total_views = db.execute(
+        f'SELECT COUNT(*) c FROM page_views p WHERE 1=1 {date_clause}', date_params,
+    ).fetchone()['c']
+    unique_visitors = db.execute(
+        f'SELECT COUNT(DISTINCT ip_hash) c FROM page_views p WHERE 1=1 {date_clause}', date_params,
+    ).fetchone()['c']
+    today_views = db.execute(
+        'SELECT COUNT(*) c FROM page_views WHERE created_at >= ?', (today_str,),
+    ).fetchone()['c']
+    today_unique = db.execute(
+        'SELECT COUNT(DISTINCT ip_hash) c FROM page_views WHERE created_at >= ?', (today_str,),
+    ).fetchone()['c']
+
+    pages = db.execute(
+        f'SELECT path, COUNT(*) as views, COUNT(DISTINCT ip_hash) as unique_visitors '
+        f'FROM page_views p WHERE 1=1 {date_clause} GROUP BY path ORDER BY views DESC',
+        date_params,
+    ).fetchall()
+
+    countries = db.execute(
+        f'SELECT g.country_name, g.country_code, COUNT(*) as views, '
+        f'COUNT(DISTINCT p.ip_hash) as unique_visitors '
+        f'FROM page_views p JOIN ip_geolocation g ON p.ip_hash = g.ip_hash '
+        f'WHERE 1=1 {date_clause} '
+        f'GROUP BY g.country_code, g.country_name ORDER BY views DESC LIMIT 20',
+        date_params,
+    ).fetchall()
+
+    cities = db.execute(
+        f'SELECT g.city, COUNT(*) as views, COUNT(DISTINCT p.ip_hash) as unique_visitors '
+        f'FROM page_views p JOIN ip_geolocation g ON p.ip_hash = g.ip_hash '
+        f"WHERE g.country_code = 'CZ' AND g.city != '' {date_clause} "
+        f'GROUP BY g.city ORDER BY views DESC LIMIT 20',
+        date_params,
+    ).fetchall()
+
+    chart_start = (today - timedelta(days=29)).isoformat()
+    daily_rows = db.execute(
+        'SELECT DATE(created_at) as day, COUNT(*) as views, '
+        'COUNT(DISTINCT ip_hash) as unique_visitors '
+        'FROM page_views WHERE created_at >= ? '
+        'GROUP BY DATE(created_at) ORDER BY day',
+        (chart_start,),
+    ).fetchall()
+
+    daily_views = []
+    data_map = {str(r['day']): r for r in daily_rows}
+    for i in range(30):
+        d = (today - timedelta(days=29 - i)).isoformat()
+        row = data_map.get(d)
+        daily_views.append({
+            'date': d,
+            'views': row['views'] if row else 0,
+            'unique': row['unique_visitors'] if row else 0,
+        })
+
+    recent = db.execute(
+        'SELECT p.path, p.user_agent, p.referrer, p.created_at, '
+        'g.country_name, g.country_code, g.city '
+        'FROM page_views p LEFT JOIN ip_geolocation g ON p.ip_hash = g.ip_hash '
+        'ORDER BY p.created_at DESC LIMIT 50',
+    ).fetchall()
+
+    return render_template(
+        'admin/navstevnost.html',
+        total_views=total_views, unique_visitors=unique_visitors,
+        today_views=today_views, today_unique=today_unique,
+        pages=pages, countries=countries, cities=cities,
+        daily_views=daily_views, recent=recent, period=period,
+    )
 
 
 # ── Admin: Etapy ──────────────────────────────────────────────────

@@ -3690,3 +3690,306 @@ class TestScheduledPaymentChecks:
                 ANY, 'cron', minute='0,15,30,45', id='payment_check'
             )
             assert mock_sched.start.called
+
+
+# ── Visitor tracking tests ──────────────────────────────────────
+
+
+class TestPageViewTracking:
+    """Test that public page views are recorded in the page_views table."""
+
+    def test_homepage_tracked(self, app, client):
+        import app as flask_app
+        client.get('/')
+        with app.app_context():
+            db = flask_app.get_db()
+            rows = db.execute('SELECT * FROM page_views').fetchall()
+        assert len(rows) == 1
+        assert rows[0]['path'] == '/'
+        assert rows[0]['ip_hash']
+
+    def test_kontakt_tracked(self, app, client):
+        import app as flask_app
+        client.get('/kontakt')
+        with app.app_context():
+            db = flask_app.get_db()
+            rows = db.execute("SELECT * FROM page_views WHERE path = '/kontakt'").fetchall()
+        assert len(rows) == 1
+
+    def test_multiple_pages_tracked(self, app, client):
+        import app as flask_app
+        client.get('/')
+        client.get('/kontakt')
+        client.get('/propozice')
+        with app.app_context():
+            db = flask_app.get_db()
+            count = db.execute('SELECT COUNT(*) c FROM page_views').fetchone()['c']
+        assert count == 3
+
+    def test_admin_pages_not_tracked(self, admin_client, app):
+        import app as flask_app
+        admin_client.get('/admin')
+        admin_client.get('/admin/etapy')
+        with app.app_context():
+            db = flask_app.get_db()
+            count = db.execute('SELECT COUNT(*) c FROM page_views').fetchone()['c']
+        assert count == 0
+
+    def test_login_page_not_tracked(self, app, client):
+        import app as flask_app
+        client.get('/admin/login')
+        with app.app_context():
+            db = flask_app.get_db()
+            count = db.execute('SELECT COUNT(*) c FROM page_views').fetchone()['c']
+        assert count == 0
+
+    def test_static_not_tracked(self, app, client):
+        import app as flask_app
+        client.get('/static/logo.png')
+        with app.app_context():
+            db = flask_app.get_db()
+            count = db.execute('SELECT COUNT(*) c FROM page_views').fetchone()['c']
+        assert count == 0
+
+    def test_404_not_tracked(self, app, client):
+        import app as flask_app
+        client.get('/nonexistent-page')
+        with app.app_context():
+            db = flask_app.get_db()
+            count = db.execute('SELECT COUNT(*) c FROM page_views').fetchone()['c']
+        assert count == 0
+
+    def test_ip_hash_consistent(self, app, client):
+        import app as flask_app
+        client.get('/')
+        client.get('/kontakt')
+        with app.app_context():
+            db = flask_app.get_db()
+            hashes = [r['ip_hash'] for r in db.execute('SELECT ip_hash FROM page_views').fetchall()]
+        assert hashes[0] == hashes[1]
+
+    def test_user_agent_stored(self, app, client):
+        import app as flask_app
+        client.get('/', headers={'User-Agent': 'TestBot/1.0'})
+        with app.app_context():
+            db = flask_app.get_db()
+            row = db.execute('SELECT user_agent FROM page_views').fetchone()
+        assert row['user_agent'] == 'TestBot/1.0'
+
+    def test_referrer_stored(self, app, client):
+        import app as flask_app
+        client.get('/', headers={'Referer': 'https://google.com'})
+        with app.app_context():
+            db = flask_app.get_db()
+            row = db.execute('SELECT referrer FROM page_views').fetchone()
+        assert row['referrer'] == 'https://google.com'
+
+    def test_post_requests_not_tracked(self, app, client):
+        import app as flask_app
+        client.post('/registrace', data={
+            'name': 'Test', 'email': 'test@test.cz',
+            'phone': '', 'note': '', 'gdpr_consent': '1',
+        })
+        with app.app_context():
+            db = flask_app.get_db()
+            count = db.execute('SELECT COUNT(*) c FROM page_views').fetchone()['c']
+        assert count == 0
+
+
+class TestGeoLookup:
+    """Test the background geolocation lookup."""
+
+    def test_lookup_stores_result(self, app):
+        import app as flask_app
+        with app.app_context():
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = {
+                'status': 'success',
+                'country': 'Czech Republic',
+                'countryCode': 'CZ',
+                'city': 'Prague',
+            }
+            with patch('app.requests.get', return_value=mock_resp):
+                flask_app._lookup_geo('1.2.3.4', 'abc123')
+            db = flask_app.get_db()
+            row = db.execute("SELECT * FROM ip_geolocation WHERE ip_hash = 'abc123'").fetchone()
+        assert row is not None
+        assert row['country_code'] == 'CZ'
+        assert row['country_name'] == 'Czech Republic'
+        assert row['city'] == 'Prague'
+
+    def test_lookup_failure_does_not_crash(self, app):
+        import app as flask_app
+        with app.app_context():
+            with patch('app.requests.get', side_effect=Exception('timeout')):
+                flask_app._lookup_geo('1.2.3.4', 'fail123')
+            db = flask_app.get_db()
+            row = db.execute("SELECT * FROM ip_geolocation WHERE ip_hash = 'fail123'").fetchone()
+        assert row is None
+
+    def test_lookup_non_success_ignored(self, app):
+        import app as flask_app
+        with app.app_context():
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = {'status': 'fail', 'message': 'reserved range'}
+            with patch('app.requests.get', return_value=mock_resp):
+                flask_app._lookup_geo('10.0.0.1', 'priv123')
+            db = flask_app.get_db()
+            row = db.execute("SELECT * FROM ip_geolocation WHERE ip_hash = 'priv123'").fetchone()
+        assert row is None
+
+    def test_duplicate_ip_hash_no_error(self, app):
+        import app as flask_app
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO ip_geolocation (ip_hash, country_code, country_name, city) "
+                "VALUES ('dup123', 'CZ', 'Czech Republic', 'Brno')",
+            )
+            db.commit()
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = {
+                'status': 'success', 'country': 'Czech Republic',
+                'countryCode': 'CZ', 'city': 'Prague',
+            }
+            with patch('app.requests.get', return_value=mock_resp):
+                flask_app._lookup_geo('5.6.7.8', 'dup123')
+            row = db.execute("SELECT city FROM ip_geolocation WHERE ip_hash = 'dup123'").fetchone()
+        assert row['city'] == 'Brno'
+
+    def test_geo_thread_spawned_for_new_ip(self, app, client):
+        with patch('app.Thread') as MockThread:
+            mock_thread = MagicMock()
+            MockThread.return_value = mock_thread
+            client.get('/')
+            MockThread.assert_called_once()
+            mock_thread.start.assert_called_once()
+
+    def test_geo_thread_not_spawned_for_cached_ip(self, app, client):
+        import app as flask_app
+        import hashlib
+        ip_hash = hashlib.sha256(b'127.0.0.1').hexdigest()[:16]
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO ip_geolocation (ip_hash, country_code, country_name, city) "
+                "VALUES (?, 'CZ', 'Czech Republic', 'Prague')",
+                (ip_hash,),
+            )
+            db.commit()
+        with patch('app.Thread') as MockThread:
+            client.get('/')
+            MockThread.assert_not_called()
+
+
+class TestAdminNavstevnost:
+    """Test the admin analytics page."""
+
+    def test_requires_login(self, client):
+        resp = client.get('/admin/navstevnost')
+        assert resp.status_code == 302
+        assert '/admin/login' in resp.headers['Location']
+
+    def test_page_loads(self, admin_client):
+        resp = admin_client.get('/admin/navstevnost')
+        assert resp.status_code == 200
+        assert 'Návštěvnost' in resp.data.decode()
+
+    def test_shows_page_views(self, app, admin_client):
+        import app as flask_app
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO page_views (ip_hash, path, user_agent, referrer) "
+                "VALUES ('aaa', '/', 'Bot/1.0', '')",
+            )
+            db.execute(
+                "INSERT INTO page_views (ip_hash, path, user_agent, referrer) "
+                "VALUES ('bbb', '/kontakt', 'Bot/2.0', 'https://google.com')",
+            )
+            db.commit()
+        resp = admin_client.get('/admin/navstevnost')
+        html = resp.data.decode()
+        assert '/kontakt' in html
+
+    def test_shows_geo_data(self, app, admin_client):
+        import app as flask_app
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO page_views (ip_hash, path, user_agent, referrer) "
+                "VALUES ('geo1', '/', '', '')",
+            )
+            db.execute(
+                "INSERT INTO ip_geolocation (ip_hash, country_code, country_name, city) "
+                "VALUES ('geo1', 'CZ', 'Czech Republic', 'Prague')",
+            )
+            db.commit()
+        resp = admin_client.get('/admin/navstevnost')
+        html = resp.data.decode()
+        assert 'Czech Republic' in html
+        assert 'Prague' in html
+
+    def test_period_filter_today(self, admin_client):
+        resp = admin_client.get('/admin/navstevnost?period=today')
+        assert resp.status_code == 200
+
+    def test_period_filter_7(self, admin_client):
+        resp = admin_client.get('/admin/navstevnost?period=7')
+        assert resp.status_code == 200
+
+    def test_period_filter_all(self, admin_client):
+        resp = admin_client.get('/admin/navstevnost?period=all')
+        assert resp.status_code == 200
+
+    def test_invalid_period_defaults_to_30(self, admin_client):
+        resp = admin_client.get('/admin/navstevnost?period=invalid')
+        assert resp.status_code == 200
+
+    def test_empty_state(self, admin_client):
+        resp = admin_client.get('/admin/navstevnost')
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        assert 'Zatím žádná data' in html
+
+
+class TestAdminDashboardVisitorStats:
+    """Test that the admin dashboard includes visitor stats."""
+
+    def test_dashboard_shows_today_views(self, admin_client):
+        resp = admin_client.get('/admin')
+        html = resp.data.decode()
+        assert 'Návštěvy dnes' in html
+        assert 'Unikátní dnes' in html
+
+    def test_dashboard_links_to_navstevnost(self, admin_client):
+        resp = admin_client.get('/admin')
+        html = resp.data.decode()
+        assert '/admin/navstevnost' in html
+
+
+class TestFlagFilter:
+    """Test the flag emoji template filter."""
+
+    def test_czech_flag(self):
+        from app import flag_filter
+        assert flag_filter('CZ') == '\U0001f1e8\U0001f1ff'
+
+    def test_empty_code(self):
+        from app import flag_filter
+        assert flag_filter('') == ''
+
+    def test_none_code(self):
+        from app import flag_filter
+        assert flag_filter(None) == ''
+
+    def test_single_char(self):
+        from app import flag_filter
+        assert flag_filter('C') == ''
+
+    def test_lowercase_works(self):
+        from app import flag_filter
+        assert flag_filter('de') == '\U0001f1e9\U0001f1ea'

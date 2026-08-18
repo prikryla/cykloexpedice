@@ -29,6 +29,14 @@
         <div class="text-3xl font-bold text-green-600">{{ stats.payment_paid }}</div>
         <div class="text-gray-500 mt-1"><i class="bi bi-check-circle"></i> Zaplaceno</div>
     </a>
+    <a href="{{ url_for('admin_navstevnost') }}" class="bg-white rounded-xl p-6 shadow hover:shadow-lg transition">
+        <div class="text-3xl font-bold text-cyan-500">{{ stats.today_views }}</div>
+        <div class="text-gray-500 mt-1"><i class="bi bi-graph-up"></i> Návštěvy dnes</div>
+    </a>
+    <a href="{{ url_for('admin_navstevnost') }}" class="bg-white rounded-xl p-6 shadow hover:shadow-lg transition">
+        <div class="text-3xl font-bold text-teal-500">{{ stats.today_unique }}</div>
+        <div class="text-gray-500 mt-1"><i class="bi bi-people"></i> Unikátní dnes</div>
+    </a>
 </div>
 
 <div class="bg-white rounded-xl p-6 shadow">
