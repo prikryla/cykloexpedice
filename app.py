@@ -28,7 +28,7 @@ from flask_limiter.util import get_remote_address
 from vokativ import vokativ as _vokativ
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-VERSION = '1.6.2'
+VERSION = '1.6.3'
 
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
@@ -111,6 +111,20 @@ PUBLIC_ENDPOINTS = frozenset({
     'aktuality', 'fotky', 'kontakt', 'registrace',
 })
 
+_BOT_PATTERNS = re.compile(
+    r'bot|crawl|spider|slurp|googlebot|bingbot|yandex|baidu|duckduck'
+    r'|semrush|ahrefs|mj12|dotbot|petalbot|bytespider|gptbot|claudebot'
+    r'|facebookexternalhit|twitterbot|linkedinbot|whatsapp|telegrambot'
+    r'|curl|wget|python-requests|scrapy|httpclient|java/|go-http'
+    r'|headlesschrome|phantomjs|puppeteer|lighthouse|pagespeed'
+    r'|uptimerobot|pingdom|statuscake|site24x7|monitor',
+    re.IGNORECASE,
+)
+
+
+def _is_bot(user_agent):
+    return bool(_BOT_PATTERNS.search(user_agent)) if user_agent else False
+
 
 @app.after_request
 def track_page_view(response):
@@ -125,12 +139,13 @@ def track_page_view(response):
             path = request.path
             user_agent = (request.headers.get('User-Agent') or '')[:500]
             referrer = (request.headers.get('Referer') or '')[:500]
+            bot = 1 if _is_bot(user_agent) else 0
 
             db = get_db()
             db.execute(
-                'INSERT INTO page_views (ip_hash, path, user_agent, referrer) '
-                'VALUES (?, ?, ?, ?)',
-                (ip_hash, path, user_agent, referrer),
+                'INSERT INTO page_views (ip_hash, path, user_agent, referrer, is_bot) '
+                'VALUES (?, ?, ?, ?, ?)',
+                (ip_hash, path, user_agent, referrer, bot),
             )
             db.commit()
 
@@ -313,6 +328,7 @@ def init_db():
             path TEXT NOT NULL,
             user_agent TEXT,
             referrer TEXT,
+            is_bot INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''',
         '''CREATE TABLE IF NOT EXISTS ip_geolocation (
             ip_hash TEXT PRIMARY KEY,
@@ -332,6 +348,13 @@ def init_db():
             db.commit()
         except Exception:
             db._conn.rollback()
+
+    # Add is_bot column to page_views if it doesn't exist (migration for existing DBs)
+    try:
+        db.execute("ALTER TABLE page_views ADD COLUMN is_bot INTEGER DEFAULT 0")
+        db.commit()
+    except Exception:
+        db._conn.rollback()
 
     # Add payment columns to registrace if they don't exist (migration for existing DBs)
     for col_stmt in [
@@ -1929,8 +1952,8 @@ def admin_dashboard():
         'payment_pending': db.execute("SELECT COUNT(*) c FROM registrace WHERE payment_status = 'pending'").fetchone()['c'],
         'payment_paid': db.execute("SELECT COUNT(*) c FROM registrace WHERE payment_status = 'paid'").fetchone()['c']
             + db.execute("SELECT COUNT(*) c FROM registrace WHERE name IN ('Adam Přikryl', 'Michal Přikryl') AND payment_status != 'paid'").fetchone()['c'],
-        'today_views': db.execute('SELECT COUNT(*) c FROM page_views WHERE created_at >= ?', (today_str,)).fetchone()['c'],
-        'today_unique': db.execute('SELECT COUNT(DISTINCT ip_hash) c FROM page_views WHERE created_at >= ?', (today_str,)).fetchone()['c'],
+        'today_views': db.execute('SELECT COUNT(*) c FROM page_views WHERE created_at >= ? AND is_bot = 0', (today_str,)).fetchone()['c'],
+        'today_unique': db.execute('SELECT COUNT(DISTINCT ip_hash) c FROM page_views WHERE created_at >= ? AND is_bot = 0', (today_str,)).fetchone()['c'],
     }
     return render_template('admin/dashboard.html', stats=stats)
 
@@ -1957,6 +1980,8 @@ def admin_navstevnost():
         start_str = (today - timedelta(days=30)).isoformat()
         period = '30'
 
+    show_bots = request.args.get('bots') == '1'
+
     if start_str:
         date_clause = 'AND p.created_at >= ?'
         date_params = (start_str,)
@@ -1964,22 +1989,27 @@ def admin_navstevnost():
         date_clause = ''
         date_params = ()
 
+    bot_clause = '' if show_bots else 'AND p.is_bot = 0'
+
     total_views = db.execute(
-        f'SELECT COUNT(*) c FROM page_views p WHERE 1=1 {date_clause}', date_params,
+        f'SELECT COUNT(*) c FROM page_views p WHERE 1=1 {bot_clause} {date_clause}', date_params,
     ).fetchone()['c']
     unique_visitors = db.execute(
-        f'SELECT COUNT(DISTINCT ip_hash) c FROM page_views p WHERE 1=1 {date_clause}', date_params,
+        f'SELECT COUNT(DISTINCT ip_hash) c FROM page_views p WHERE 1=1 {bot_clause} {date_clause}', date_params,
     ).fetchone()['c']
     today_views = db.execute(
-        'SELECT COUNT(*) c FROM page_views WHERE created_at >= ?', (today_str,),
+        f'SELECT COUNT(*) c FROM page_views p WHERE p.created_at >= ? {bot_clause}', (today_str,),
     ).fetchone()['c']
     today_unique = db.execute(
-        'SELECT COUNT(DISTINCT ip_hash) c FROM page_views WHERE created_at >= ?', (today_str,),
+        f'SELECT COUNT(DISTINCT ip_hash) c FROM page_views p WHERE p.created_at >= ? {bot_clause}', (today_str,),
+    ).fetchone()['c']
+    bot_count = db.execute(
+        f'SELECT COUNT(*) c FROM page_views p WHERE p.is_bot = 1 {date_clause}', date_params,
     ).fetchone()['c']
 
     pages = db.execute(
         f'SELECT path, COUNT(*) as views, COUNT(DISTINCT ip_hash) as unique_visitors '
-        f'FROM page_views p WHERE 1=1 {date_clause} GROUP BY path ORDER BY views DESC',
+        f'FROM page_views p WHERE 1=1 {bot_clause} {date_clause} GROUP BY path ORDER BY views DESC',
         date_params,
     ).fetchall()
 
@@ -1987,16 +2017,17 @@ def admin_navstevnost():
         f'SELECT g.country_name, g.country_code, COUNT(*) as views, '
         f'COUNT(DISTINCT p.ip_hash) as unique_visitors '
         f'FROM page_views p JOIN ip_geolocation g ON p.ip_hash = g.ip_hash '
-        f'WHERE 1=1 {date_clause} '
+        f'WHERE 1=1 {bot_clause} {date_clause} '
         f'GROUP BY g.country_code, g.country_name ORDER BY views DESC LIMIT 20',
         date_params,
     ).fetchall()
 
     chart_start = (today - timedelta(days=29)).isoformat()
+    bot_chart_clause = '' if show_bots else 'AND is_bot = 0'
     daily_rows = db.execute(
         'SELECT DATE(created_at) as day, COUNT(*) as views, '
         'COUNT(DISTINCT ip_hash) as unique_visitors '
-        'FROM page_views WHERE created_at >= ? '
+        f'FROM page_views WHERE created_at >= ? {bot_chart_clause} '
         'GROUP BY DATE(created_at) ORDER BY day',
         (chart_start,),
     ).fetchall()
@@ -2014,8 +2045,9 @@ def admin_navstevnost():
 
     recent = db.execute(
         'SELECT p.path, p.user_agent, p.referrer, p.created_at, '
-        'g.country_name, g.country_code '
+        'p.is_bot, g.country_name, g.country_code '
         'FROM page_views p LEFT JOIN ip_geolocation g ON p.ip_hash = g.ip_hash '
+        f'WHERE 1=1 {bot_clause.replace("p.", "p.")} '
         'ORDER BY p.created_at DESC LIMIT 50',
     ).fetchall()
 
@@ -2025,6 +2057,7 @@ def admin_navstevnost():
         today_views=today_views, today_unique=today_unique,
         pages=pages, countries=countries,
         daily_views=daily_views, recent=recent, period=period,
+        show_bots=show_bots, bot_count=bot_count,
     )
 
 

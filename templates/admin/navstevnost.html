@@ -9,15 +9,29 @@
 {% block content %}
 <h1 class="text-2xl font-bold mb-6">Návštěvnost</h1>
 
-<!-- Period filter -->
-<div class="flex flex-wrap gap-2 mb-6">
+<!-- Period filter + bot toggle -->
+<div class="flex flex-wrap items-center gap-2 mb-6">
     {% for val, label in [('today', 'Dnes'), ('7', '7 dní'), ('30', '30 dní'), ('all', 'Vše')] %}
-    <a href="{{ url_for('admin_navstevnost', period=val) }}"
+    <a href="{{ url_for('admin_navstevnost', period=val, bots='1' if show_bots else None) }}"
        class="px-4 py-2 rounded-full text-sm font-medium transition
               {% if period == val %}bg-gray-900 text-white{% else %}bg-white text-gray-600 hover:bg-gray-200{% endif %}">
         {{ label }}
     </a>
     {% endfor %}
+
+    <span class="mx-2 text-gray-300">|</span>
+
+    {% if show_bots %}
+    <a href="{{ url_for('admin_navstevnost', period=period) }}"
+       class="px-4 py-2 rounded-full text-sm font-medium bg-orange-100 text-orange-700 hover:bg-orange-200 transition">
+        <i class="bi bi-robot"></i> Boti zahrnuti ({{ bot_count }}) &times;
+    </a>
+    {% else %}
+    <a href="{{ url_for('admin_navstevnost', period=period, bots='1') }}"
+       class="px-4 py-2 rounded-full text-sm font-medium bg-white text-gray-600 hover:bg-gray-200 transition">
+        <i class="bi bi-robot"></i> Zobrazit boty ({{ bot_count }})
+    </a>
+    {% endif %}
 </div>
 
 <!-- Stats cards -->
@@ -122,6 +136,7 @@
                     <th class="pb-2">Stránka</th>
                     <th class="pb-2">Lokace</th>
                     <th class="pb-2">Zdroj</th>
+                    <th class="pb-2">Prohlížeč</th>
                 </tr>
             </thead>
             <tbody>
@@ -136,8 +151,16 @@
                             <span class="text-gray-400">–</span>
                         {% endif %}
                     </td>
-                    <td class="py-2 text-xs text-gray-500 max-w-xs truncate">
+                    <td class="py-2 text-xs text-gray-500 max-w-[200px] truncate">
                         {% if v.referrer %}{{ v.referrer }}{% else %}<span class="text-gray-300">–</span>{% endif %}
+                    </td>
+                    <td class="py-2 text-xs max-w-[250px] truncate">
+                        {% if v.is_bot %}
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 text-xs font-medium">
+                                <i class="bi bi-robot"></i> Bot
+                            </span>
+                        {% endif %}
+                        <span class="text-gray-400" title="{{ v.user_agent }}">{{ v.user_agent[:80] }}{% if v.user_agent|length > 80 %}…{% endif %}</span>
                     </td>
                 </tr>
                 {% endfor %}

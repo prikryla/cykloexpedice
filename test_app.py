@@ -3795,6 +3795,82 @@ class TestPageViewTracking:
             count = db.execute('SELECT COUNT(*) c FROM page_views').fetchone()['c']
         assert count == 0
 
+    def test_bot_flagged(self, app, client):
+        import app as flask_app
+        client.get('/', headers={'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1)'})
+        with app.app_context():
+            db = flask_app.get_db()
+            row = db.execute('SELECT is_bot FROM page_views').fetchone()
+        assert row['is_bot'] == 1
+
+    def test_real_browser_not_flagged(self, app, client):
+        import app as flask_app
+        client.get('/', headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'})
+        with app.app_context():
+            db = flask_app.get_db()
+            row = db.execute('SELECT is_bot FROM page_views').fetchone()
+        assert row['is_bot'] == 0
+
+    def test_semrush_flagged(self, app, client):
+        import app as flask_app
+        client.get('/', headers={'User-Agent': 'Mozilla/5.0 (compatible; SemrushBot/7~bl)'})
+        with app.app_context():
+            db = flask_app.get_db()
+            row = db.execute('SELECT is_bot FROM page_views').fetchone()
+        assert row['is_bot'] == 1
+
+
+class TestIsBotHelper:
+    """Test the _is_bot helper function."""
+
+    def test_googlebot(self):
+        from app import _is_bot
+        assert _is_bot('Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)')
+
+    def test_bingbot(self):
+        from app import _is_bot
+        assert _is_bot('Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)')
+
+    def test_ahrefs(self):
+        from app import _is_bot
+        assert _is_bot('Mozilla/5.0 (compatible; AhrefsBot/7.0)')
+
+    def test_curl(self):
+        from app import _is_bot
+        assert _is_bot('curl/7.88.1')
+
+    def test_python_requests(self):
+        from app import _is_bot
+        assert _is_bot('python-requests/2.31.0')
+
+    def test_real_chrome(self):
+        from app import _is_bot
+        assert not _is_bot('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+
+    def test_real_firefox(self):
+        from app import _is_bot
+        assert not _is_bot('Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0')
+
+    def test_real_safari(self):
+        from app import _is_bot
+        assert not _is_bot('Mozilla/5.0 (Macintosh; Intel Mac OS X 14_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15')
+
+    def test_empty_string(self):
+        from app import _is_bot
+        assert not _is_bot('')
+
+    def test_none(self):
+        from app import _is_bot
+        assert not _is_bot(None)
+
+    def test_uptimerobot(self):
+        from app import _is_bot
+        assert _is_bot('UptimeRobot/2.0')
+
+    def test_gptbot(self):
+        from app import _is_bot
+        assert _is_bot('Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; GPTBot/1.0)')
+
 
 class TestGeoLookup:
     """Test the background geolocation lookup."""
@@ -3951,6 +4027,64 @@ class TestAdminNavstevnost:
         assert resp.status_code == 200
         html = resp.data.decode()
         assert 'Zatím žádná data' in html
+
+    def test_bots_excluded_by_default(self, app, admin_client):
+        import app as flask_app
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO page_views (ip_hash, path, user_agent, referrer, is_bot) "
+                "VALUES ('bot1', '/', 'Googlebot/2.1', '', 1)",
+            )
+            db.execute(
+                "INSERT INTO page_views (ip_hash, path, user_agent, referrer, is_bot) "
+                "VALUES ('real1', '/', 'Mozilla/5.0', '', 0)",
+            )
+            db.commit()
+        resp = admin_client.get('/admin/navstevnost')
+        html = resp.data.decode()
+        assert '>1<' in html.replace(' ', '')
+
+    def test_bots_included_with_toggle(self, app, admin_client):
+        import app as flask_app
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO page_views (ip_hash, path, user_agent, referrer, is_bot) "
+                "VALUES ('bot1', '/', 'Googlebot/2.1', '', 1)",
+            )
+            db.execute(
+                "INSERT INTO page_views (ip_hash, path, user_agent, referrer, is_bot) "
+                "VALUES ('real1', '/', 'Mozilla/5.0', '', 0)",
+            )
+            db.commit()
+        resp = admin_client.get('/admin/navstevnost?bots=1')
+        html = resp.data.decode()
+        assert '>2<' in html.replace(' ', '')
+
+    def test_user_agent_shown(self, app, admin_client):
+        import app as flask_app
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO page_views (ip_hash, path, user_agent, referrer, is_bot) "
+                "VALUES ('ua1', '/', 'Mozilla/5.0 Chrome/120', '', 0)",
+            )
+            db.commit()
+        resp = admin_client.get('/admin/navstevnost')
+        assert 'Chrome/120' in resp.data.decode()
+
+    def test_bot_badge_shown(self, app, admin_client):
+        import app as flask_app
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO page_views (ip_hash, path, user_agent, referrer, is_bot) "
+                "VALUES ('bot2', '/', 'Googlebot/2.1', '', 1)",
+            )
+            db.commit()
+        resp = admin_client.get('/admin/navstevnost?bots=1')
+        assert 'Bot' in resp.data.decode()
 
 
 class TestAdminDashboardVisitorStats:
