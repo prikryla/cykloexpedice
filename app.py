@@ -28,7 +28,7 @@ from flask_limiter.util import get_remote_address
 from vokativ import vokativ as _vokativ
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-VERSION = '1.6.3'
+VERSION = '1.6.4'
 
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
@@ -117,7 +117,9 @@ _BOT_PATTERNS = re.compile(
     r'|facebookexternalhit|twitterbot|linkedinbot|whatsapp|telegrambot'
     r'|curl|wget|python-requests|scrapy|httpclient|java/|go-http'
     r'|headlesschrome|phantomjs|puppeteer|lighthouse|pagespeed'
-    r'|uptimerobot|pingdom|statuscake|site24x7|monitor',
+    r'|uptimerobot|pingdom|statuscake|site24x7|monitor'
+    r'|iphone os 13_2_3'
+    r'|windows nt 9[._]',
     re.IGNORECASE,
 )
 
@@ -353,6 +355,22 @@ def init_db():
     try:
         db.execute("ALTER TABLE page_views ADD COLUMN is_bot INTEGER DEFAULT 0")
         db.commit()
+    except Exception:
+        db._conn.rollback()
+
+    # Backfill is_bot for existing page_views that match bot patterns
+    try:
+        rows = db.execute(
+            "SELECT id, user_agent FROM page_views WHERE is_bot = 0 AND user_agent IS NOT NULL",
+        ).fetchall()
+        updated = 0
+        for row in rows:
+            if _is_bot(row['user_agent']):
+                db.execute("UPDATE page_views SET is_bot = 1 WHERE id = ?", (row['id'],))
+                updated += 1
+        if updated:
+            db.commit()
+            print(f'[ANALYTICS] Backfilled {updated} page views as bot traffic')
     except Exception:
         db._conn.rollback()
 

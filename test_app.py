@@ -3871,6 +3871,73 @@ class TestIsBotHelper:
         from app import _is_bot
         assert _is_bot('Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; GPTBot/1.0)')
 
+    def test_iphone_13_2_3_botnet(self):
+        from app import _is_bot
+        assert _is_bot(
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) '
+            'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.4 '
+            'Mobile/15E148 Safari/604.1'
+        )
+
+    def test_fake_windows_nt_9(self):
+        from app import _is_bot
+        assert _is_bot(
+            'Mozilla/5.0 (Windows NT 9_1_2; Win64; x64) '
+            'AppleWebKit/580.41 (KHTML, like Gecko) Chrome/120.0.0.0'
+        )
+
+    def test_real_iphone_18_not_flagged(self):
+        from app import _is_bot
+        assert not _is_bot(
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) '
+            'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 '
+            'Mobile/15E148 Safari/604.1'
+        )
+
+    def test_real_windows_10_not_flagged(self):
+        from app import _is_bot
+        assert not _is_bot(
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+            'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0'
+        )
+
+
+class TestBotBackfill:
+    """Test that existing page_views are backfilled with is_bot flag."""
+
+    def test_backfill_labels_bots(self, app):
+        import app as flask_app
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO page_views (ip_hash, path, user_agent, referrer, is_bot) "
+                "VALUES ('b1', '/', 'Mozilla/5.0 (compatible; Googlebot/2.1)', '', 0)",
+            )
+            db.execute(
+                "INSERT INTO page_views (ip_hash, path, user_agent, referrer, is_bot) "
+                "VALUES ('r1', '/', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', '', 0)",
+            )
+            db.commit()
+            flask_app.init_db()
+            bot_row = db.execute("SELECT is_bot FROM page_views WHERE ip_hash = 'b1'").fetchone()
+            real_row = db.execute("SELECT is_bot FROM page_views WHERE ip_hash = 'r1'").fetchone()
+        assert bot_row['is_bot'] == 1
+        assert real_row['is_bot'] == 0
+
+    def test_backfill_catches_iphone_botnet(self, app):
+        import app as flask_app
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO page_views (ip_hash, path, user_agent, referrer, is_bot) "
+                "VALUES ('ib1', '/', 'Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) "
+                "AppleWebKit/605.1.15', '', 0)",
+            )
+            db.commit()
+            flask_app.init_db()
+            row = db.execute("SELECT is_bot FROM page_views WHERE ip_hash = 'ib1'").fetchone()
+        assert row['is_bot'] == 1
+
 
 class TestGeoLookup:
     """Test the background geolocation lookup."""
