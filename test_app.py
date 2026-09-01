@@ -4327,3 +4327,24 @@ class TestMarkAsPaid:
             db = flask_app.get_db()
             db.execute('DELETE FROM registrace WHERE id = ?', (reg_id,))
             db.commit()
+
+    def test_button_visible_for_approved_unsent(self, app, admin_client):
+        import app as flask_app
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO registrace (name, email, status, payment_status) VALUES (?, ?, ?, ?)",
+                ('Unsent Approved', 'unsent@test.cz', 'approved', 'none')
+            )
+            db.commit()
+            reg = db.execute("SELECT * FROM registrace WHERE name = 'Unsent Approved'").fetchone()
+            reg_id = reg['id']
+
+        resp = admin_client.get('/admin/registrace')
+        html = resp.data.decode()
+        assert f'/admin/registrace/{reg_id}/mark-paid' in html
+
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute('DELETE FROM registrace WHERE id = ?', (reg_id,))
+            db.commit()
