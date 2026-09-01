@@ -4191,3 +4191,139 @@ class TestFlagFilter:
     def test_lowercase_works(self):
         from app import flag_filter
         assert flag_filter('de') == '\U0001f1e9\U0001f1ea'
+
+
+# ── Cookie consent & Privacy policy tests ────────────────────────
+
+
+class TestPrivacyPolicy:
+    def test_page_loads(self, client):
+        resp = client.get('/ochrana-osobnich-udaju')
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        assert 'Správce osobních údajů' in html
+        assert 'GDPR' in html
+        assert 'Cookies' in html
+        assert 'analytics_consent' in html
+        assert 'uoou.cz' in html
+
+    def test_link_on_all_public_pages(self, client):
+        for path in ['/', '/aktuality', '/kontakt', '/registrace', '/propozice', '/ubytovani']:
+            resp = client.get(path)
+            assert resp.status_code == 200
+            assert 'ochrana-osobnich-udaju' in resp.data.decode(), f'Missing privacy link on {path}'
+
+
+class TestCookieConsent:
+    def test_banner_present(self, client):
+        resp = client.get('/')
+        html = resp.data.decode()
+        assert 'cookie-banner' in html
+        assert 'setCookieConsent' in html
+        assert 'Odmítnout' in html
+
+    def test_footer_has_cookie_settings(self, client):
+        resp = client.get('/')
+        html = resp.data.decode()
+        assert 'Ochrana osobních údajů' in html
+
+    def test_tracking_skipped_on_rejected_consent(self, app, client):
+        import app as flask_app
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute('DELETE FROM page_views')
+            db.commit()
+        client.set_cookie('analytics_consent', 'rejected')
+        client.get('/')
+        with app.app_context():
+            db = flask_app.get_db()
+            count = db.execute('SELECT COUNT(*) c FROM page_views').fetchone()['c']
+            assert count == 0
+
+    def test_tracking_works_on_accepted_consent(self, app, client):
+        import app as flask_app
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute('DELETE FROM page_views')
+            db.commit()
+        client.set_cookie('analytics_consent', 'accepted')
+        client.get('/')
+        with app.app_context():
+            db = flask_app.get_db()
+            count = db.execute('SELECT COUNT(*) c FROM page_views').fetchone()['c']
+            assert count == 1
+
+    def test_tracking_works_without_consent_cookie(self, app, client):
+        import app as flask_app
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute('DELETE FROM page_views')
+            db.commit()
+        client.get('/')
+        with app.app_context():
+            db = flask_app.get_db()
+            count = db.execute('SELECT COUNT(*) c FROM page_views').fetchone()['c']
+            assert count == 1
+
+
+# ── Mark as paid tests ───────────────────────────────────────────
+
+
+class TestMarkAsPaid:
+    def test_requires_login(self, client):
+        resp = client.post('/admin/registrace/1/mark-paid')
+        assert resp.status_code == 302
+        assert '/admin/login' in resp.headers['Location']
+
+    def test_nonexistent_returns_404(self, admin_client):
+        resp = admin_client.post('/admin/registrace/99999/mark-paid')
+        assert resp.status_code == 404
+
+    def test_full_flow(self, app, admin_client):
+        import app as flask_app
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO registrace (name, email, status, payment_status) VALUES (?, ?, ?, ?)",
+                ('Vojtech Test', 'vojtech@test.cz', 'approved', 'none')
+            )
+            db.commit()
+            reg = db.execute("SELECT * FROM registrace WHERE name = 'Vojtech Test'").fetchone()
+            reg_id = reg['id']
+            assert reg['payment_status'] == 'none'
+            assert reg['variable_symbol'] is None
+
+        resp = admin_client.post(f'/admin/registrace/{reg_id}/mark-paid', follow_redirects=True)
+        assert resp.status_code == 200
+
+        with app.app_context():
+            db = flask_app.get_db()
+            reg = db.execute('SELECT * FROM registrace WHERE id = ?', (reg_id,)).fetchone()
+            assert reg['payment_status'] == 'paid'
+            assert reg['variable_symbol'] == reg_id
+            assert reg['payment_amount'] == 3500.0
+            db.execute('DELETE FROM registrace WHERE id = ?', (reg_id,))
+            db.commit()
+
+    def test_shows_in_paid_section(self, app, admin_client):
+        import app as flask_app
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute(
+                "INSERT INTO registrace (name, email, status, payment_status) VALUES (?, ?, ?, ?)",
+                ('Paid User', 'paid@test.cz', 'approved', 'none')
+            )
+            db.commit()
+            reg = db.execute("SELECT * FROM registrace WHERE name = 'Paid User'").fetchone()
+            reg_id = reg['id']
+
+        admin_client.post(f'/admin/registrace/{reg_id}/mark-paid')
+        resp = admin_client.get('/admin/registrace')
+        html = resp.data.decode()
+        assert 'Paid User' in html
+        assert 'Zaplaceno' in html
+
+        with app.app_context():
+            db = flask_app.get_db()
+            db.execute('DELETE FROM registrace WHERE id = ?', (reg_id,))
+            db.commit()

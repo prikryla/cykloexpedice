@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}Ochrana osobních údajů – Cykloexpedice {{ settings.event_year }}{% endblock %}
+
+{% block content %}
+<section class="bg-dark-900 py-16 md:py-20 relative overflow-hidden">
+    <div class="relative max-w-6xl mx-auto px-4 text-center">
+        <p class="text-olive-500 font-semibold text-sm uppercase tracking-[0.15em] mb-3">GDPR</p>
+        <h1 class="font-display text-4xl md:text-6xl text-white tracking-wide">OCHRANA OSOBNÍCH ÚDAJŮ</h1>
+        <div class="section-divider mx-auto mt-4"></div>
+    </div>
+</section>
+
+<section class="py-16 md:py-20">
+    <div class="max-w-3xl mx-auto px-4">
+        <div class="bg-white rounded-2xl shadow-md p-8 md:p-12 prose prose-sm max-w-none prose-headings:font-display prose-headings:tracking-wide prose-headings:text-dark-900 prose-a:text-gold-600 prose-a:no-underline hover:prose-a:underline">
+
+            <h2>1. Správce osobních údajů</h2>
+            <p>
+                Správcem osobních údajů je:<br>
+                <strong>{{ settings.contact_name_1 }}</strong> a <strong>{{ settings.contact_name_2 }}</strong><br>
+                E-mail: <a href="mailto:{{ settings.contact_email }}">{{ settings.contact_email }}</a>
+            </p>
+            <p>
+                Tato stránka popisuje, jakým způsobem zpracováváme osobní údaje návštěvníků webu
+                <strong>cykloexpedice.cz</strong> a účastníků akce <strong>{{ settings.event_name }} {{ settings.event_year }}</strong>.
+            </p>
+
+            <h2>2. Jaké údaje zpracováváme</h2>
+
+            <h3>a) Registrace na akci</h3>
+            <p>Při registraci sbíráme:</p>
+            <ul>
+                <li><strong>Jméno a příjmení</strong> – pro identifikaci účastníka</li>
+                <li><strong>E-mailová adresa</strong> – pro komunikaci ohledně akce a zasílání platebních údajů</li>
+                <li><strong>Telefonní číslo</strong> (nepovinné) – pro operativní komunikaci během akce</li>
+                <li><strong>Poznámka</strong> (nepovinné) – pro individuální požadavky účastníka</li>
+            </ul>
+
+            <h3>b) Platební údaje</h3>
+            <p>
+                Při zpracování plateb uchováváme variabilní symbol a částku platby.
+                Čísla bankovních účtů účastníků neuchováváme.
+            </p>
+
+            <h3>c) Analytické údaje</h3>
+            <p>
+                Pro zlepšení webu anonymně sledujeme návštěvnost. Zpracováváme:
+            </p>
+            <ul>
+                <li><strong>Anonymizovaný hash IP adresy</strong> – z plné IP adresy nelze zpětně zjistit</li>
+                <li><strong>Navštívená stránka</strong></li>
+                <li><strong>Typ prohlížeče</strong> (User-Agent)</li>
+                <li><strong>Odkazující stránka</strong> (Referer)</li>
+                <li><strong>Země přístupu</strong> – na základě IP adresy (pouze stát, nikoliv přesná poloha)</li>
+            </ul>
+            <p>
+                Analytické sledování probíhá pouze s vaším souhlasem. Svůj souhlas můžete kdykoliv
+                odvolat prostřednictvím nastavení cookies v dolní části stránky.
+            </p>
+
+            <h3>d) Uživatelské účty</h3>
+            <p>
+                Při vytvoření účtu ukládáme jméno, e-mail a bezpečně hashované heslo.
+                Pokud propojíte účet se Stravou, ukládáme přístupové tokeny pro načítání vašich cyklistických aktivit.
+            </p>
+
+            <h2>3. Účel a právní základ zpracování</h2>
+            <table class="w-full text-sm">
+                <thead>
+                    <tr>
+                        <th class="text-left py-2 pr-4">Účel</th>
+                        <th class="text-left py-2">Právní základ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="py-2 pr-4">Organizace akce a komunikace s účastníky</td>
+                        <td class="py-2">Plnění smlouvy (čl. 6 odst. 1 písm. b GDPR)</td>
+                    </tr>
+                    <tr>
+                        <td class="py-2 pr-4">Zpracování plateb</td>
+                        <td class="py-2">Plnění smlouvy (čl. 6 odst. 1 písm. b GDPR)</td>
+                    </tr>
+                    <tr>
+                        <td class="py-2 pr-4">Analytika návštěvnosti</td>
+                        <td class="py-2">Souhlas (čl. 6 odst. 1 písm. a GDPR)</td>
+                    </tr>
+                    <tr>
+                        <td class="py-2 pr-4">Provoz uživatelských účtů</td>
+                        <td class="py-2">Plnění smlouvy (čl. 6 odst. 1 písm. b GDPR)</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h2>4. Doba uchování</h2>
+            <ul>
+                <li><strong>Registrační údaje</strong> – po dobu trvání akce a 1 rok po jejím skončení pro případné reklamace</li>
+                <li><strong>Analytické údaje</strong> – maximálně 12 měsíců</li>
+                <li><strong>Uživatelské účty</strong> – do zrušení účtu uživatelem</li>
+            </ul>
+
+            <h2>5. Příjemci údajů</h2>
+            <p>Osobní údaje mohou být předány těmto kategoriím příjemců:</p>
+            <ul>
+                <li><strong>Poskytovatel hostingu</strong> – Railway (zpracování na serverech v EU/USA)</li>
+                <li><strong>E-mailový poskytovatel</strong> – Resend (pro odesílání e-mailů účastníkům)</li>
+                <li><strong>Banka</strong> – Fio banka (pro ověření příchozích plateb)</li>
+                <li><strong>Geolokační služba</strong> – ip-api.com (pouze anonymizovaná IP pro určení země)</li>
+            </ul>
+            <p>Údaje neprodáváme ani nepředáváme třetím stranám pro marketingové účely.</p>
+
+            <h2>6. Vaše práva</h2>
+            <p>Jako subjekt údajů máte právo:</p>
+            <ul>
+                <li><strong>Na přístup</strong> – získat informaci, jaké údaje o vás zpracováváme</li>
+                <li><strong>Na opravu</strong> – požádat o opravu nepřesných údajů</li>
+                <li><strong>Na výmaz</strong> – požádat o smazání vašich údajů</li>
+                <li><strong>Na omezení zpracování</strong> – požádat o omezení zpracování</li>
+                <li><strong>Na přenositelnost</strong> – získat údaje ve strojově čitelném formátu</li>
+                <li><strong>Odvolat souhlas</strong> – kdykoli odvolat souhlas se zpracováním (pro analytiku)</li>
+                <li><strong>Podat stížnost</strong> – u Úřadu pro ochranu osobních údajů (<a href="https://www.uoou.cz" target="_blank" rel="noopener">www.uoou.cz</a>)</li>
+            </ul>
+            <p>
+                Pro uplatnění svých práv nás kontaktujte na
+                <a href="mailto:{{ settings.contact_email }}">{{ settings.contact_email }}</a>.
+            </p>
+
+            <h2>7. Cookies</h2>
+            <p>Web používá tyto cookies:</p>
+            <table class="w-full text-sm">
+                <thead>
+                    <tr>
+                        <th class="text-left py-2 pr-4">Cookie</th>
+                        <th class="text-left py-2 pr-4">Typ</th>
+                        <th class="text-left py-2 pr-4">Účel</th>
+                        <th class="text-left py-2">Expirace</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="py-2 pr-4 font-mono text-xs">session</td>
+                        <td class="py-2 pr-4">Nezbytné</td>
+                        <td class="py-2 pr-4">Funkčnost webu, přihlášení, CSRF ochrana</td>
+                        <td class="py-2">8 hodin</td>
+                    </tr>
+                    <tr>
+                        <td class="py-2 pr-4 font-mono text-xs">analytics_consent</td>
+                        <td class="py-2 pr-4">Nezbytné</td>
+                        <td class="py-2 pr-4">Zapamatování volby ohledně analytických cookies</td>
+                        <td class="py-2">365 dní</td>
+                    </tr>
+                </tbody>
+            </table>
+            <p>
+                Web nepoužívá žádné marketingové ani reklamní cookies.
+                Analytické sledování návštěvnosti je serverové (bez cookies) a probíhá
+                pouze s vaším souhlasem.
+            </p>
+
+            <h2>8. Zabezpečení</h2>
+            <p>
+                Přijímáme přiměřená technická a organizační opatření k ochraně vašich údajů,
+                včetně šifrovaného přenosu (HTTPS), hashování hesel a anonymizace IP adres.
+            </p>
+
+            <div class="mt-10 pt-6 border-t border-gray-200 text-gray-500 text-xs">
+                <p>Poslední aktualizace: 1. 9. 2026</p>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

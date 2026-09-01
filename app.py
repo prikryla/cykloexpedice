@@ -28,7 +28,7 @@ from flask_limiter.util import get_remote_address
 from vokativ import vokativ as _vokativ
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-VERSION = '1.6.4'
+VERSION = '1.7.0'
 
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
@@ -109,6 +109,7 @@ def set_security_headers(response):
 PUBLIC_ENDPOINTS = frozenset({
     'index', 'propozice', 'etapa', 'ubytovani',
     'aktuality', 'fotky', 'kontakt', 'registrace',
+    'ochrana_osobnich_udaju',
 })
 
 _BOT_PATTERNS = re.compile(
@@ -134,6 +135,8 @@ def track_page_view(response):
             and response.status_code == 200
             and request.endpoint in PUBLIC_ENDPOINTS):
         try:
+            if request.cookies.get('analytics_consent') == 'rejected':
+                return response
             ip = request.remote_addr or ''
             if not ip:
                 return response
@@ -1130,6 +1133,11 @@ def fotky():
 @app.route('/kontakt')
 def kontakt():
     return render_template('kontakt.html')
+
+
+@app.route('/ochrana-osobnich-udaju')
+def ochrana_osobnich_udaju():
+    return render_template('ochrana_osobnich_udaju.html')
 
 
 @app.route('/registrace', methods=['GET', 'POST'])
@@ -2640,6 +2648,24 @@ def admin_check_payments():
     flash('Platby zkontrolovány.', 'success')
     return redirect(url_for('admin_registrace'))
 
+
+@app.route('/admin/registrace/<int:id>/mark-paid', methods=['POST'])
+@login_required
+def admin_registrace_mark_paid(id):
+    db = get_db()
+    reg = db.execute('SELECT * FROM registrace WHERE id = ?', (id,)).fetchone()
+    if not reg:
+        abort(404)
+    settings = get_settings()
+    amount = reg['payment_amount'] or float(settings.get('payment_amount', 0))
+    vs = reg['variable_symbol'] or reg['id']
+    db.execute(
+        "UPDATE registrace SET payment_status = 'paid', variable_symbol = ?, payment_amount = ? WHERE id = ?",
+        (vs, amount, id),
+    )
+    db.commit()
+    flash(f'Platba pro {reg["name"]} byla ručně potvrzena.', 'success')
+    return redirect(url_for('admin_registrace'))
 
 
 # ── Admin: Email templates ────────────────────────────────────
