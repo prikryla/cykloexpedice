@@ -79,12 +79,12 @@
                 ('velkomoravska_2023', '2023'), ('staroceska_2025', '2025'), ('wachau_2026', '2026')
             ] %}
             <div class="flex flex-col items-center gap-1.5 group">
-                <div class="w-24 h-24 rounded-full overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.4)] transition duration-300{% if badge[0] == 'wachau_2026' %} opacity-40 grayscale{% endif %}">
+                <div class="w-24 h-24 rounded-full overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.4)] transition duration-300">
                     <img src="{{ url_for('static', filename='badges/' ~ badge[0] ~ '.png') }}"
                          alt="{{ badge[0]|replace('_', ' ')|title }}"
                          class="w-full h-full object-cover">
                 </div>
-                <span class="text-xs font-semibold{% if badge[0] == 'wachau_2026' %} text-gray-600{% else %} text-gray-500{% endif %}">{{ badge[1] }}</span>
+                <span class="text-xs font-semibold text-gray-500">{{ badge[1] }}</span>
             </div>
             {% endfor %}
         </div>
@@ -97,12 +97,12 @@
                 ('velkomoravska_2023', '2023'), ('staroceska_2025', '2025'), ('wachau_2026', '2026')
             ] %}
             <div class="flex flex-col items-center gap-2 group">
-                <div class="w-20 h-20 lg:w-28 lg:h-28 rounded-full overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.4)] transition duration-300{% if badge[0] == 'wachau_2026' %} opacity-40 grayscale{% else %} group-hover:scale-110 group-hover:shadow-[0_6px_30px_rgba(251,176,31,0.3)]{% endif %}">
+                <div class="w-20 h-20 lg:w-28 lg:h-28 rounded-full overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.4)] transition duration-300 group-hover:scale-110 group-hover:shadow-[0_6px_30px_rgba(251,176,31,0.3)]">
                     <img src="{{ url_for('static', filename='badges/' ~ badge[0] ~ '.png') }}"
                          alt="{{ badge[0]|replace('_', ' ')|title }}"
                          class="w-full h-full object-cover">
                 </div>
-                <span class="text-sm font-semibold transition{% if badge[0] == 'wachau_2026' %} text-gray-600{% else %} text-gray-500 group-hover:text-gold-500{% endif %}">{{ badge[1] }}</span>
+                <span class="text-sm font-semibold transition text-gray-500 group-hover:text-gold-500">{{ badge[1] }}</span>
             </div>
             {% endfor %}
         </div>
