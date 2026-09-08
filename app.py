@@ -2880,6 +2880,34 @@ def admin_sms_send(etapa_number):
     return redirect(url_for('admin_sms'))
 
 
+@app.route('/admin/sms/test/<int:etapa_number>', methods=['POST'])
+@login_required
+def admin_sms_send_test(etapa_number):
+    phone = request.form.get('phone', '').strip()
+    if not phone:
+        flash('Zadejte telefonní číslo.', 'error')
+        return redirect(url_for('admin_sms_preview', etapa_number=etapa_number))
+    db = get_db()
+    etapa = db.execute('SELECT * FROM etapy WHERE number = ?', (etapa_number,)).fetchone()
+    if not etapa or not etapa['route_start'] or not etapa['route_end']:
+        flash('Etapa nenalezena nebo nemá nastavený start/cíl.', 'error')
+        return redirect(url_for('admin_sms_preview', etapa_number=etapa_number))
+    today = datetime.now(ZoneInfo('Europe/Prague')).strftime('%Y-%m-%d')
+    w_start = get_weather_forecast(etapa['route_start'], today)
+    w_end = get_weather_forecast(etapa['route_end'], today)
+    if not w_start or not w_end:
+        flash('Nepodařilo se načíst počasí.', 'error')
+        return redirect(url_for('admin_sms_preview', etapa_number=etapa_number))
+    message = compose_weather_sms(etapa, w_start, w_end)
+    if not phone.startswith('+'):
+        phone = '+420' + phone
+    if send_sms(phone, message):
+        flash(f'Testovací SMS odeslána na {phone}.', 'success')
+    else:
+        flash(f'Nepodařilo se odeslat SMS na {phone}.', 'error')
+    return redirect(url_for('admin_sms_preview', etapa_number=etapa_number))
+
+
 # ── Init & Run ────────────────────────────────────────────────────
 
 def _schedule_weather_sms():
