@@ -715,16 +715,32 @@ def compose_weather_sms(etapa, weather_start, weather_end):
 
 
 def send_sms(phone_number, message):
-    sid = os.environ.get('TWILIO_ACCOUNT_SID')
-    token = os.environ.get('TWILIO_AUTH_TOKEN')
-    from_number = os.environ.get('TWILIO_PHONE_NUMBER')
-    if not all([sid, token, from_number]):
+    app_id = os.environ.get('BULKGATE_APP_ID')
+    app_token = os.environ.get('BULKGATE_APP_TOKEN')
+    if not all([app_id, app_token]):
         print(f'[SMS STUB] To: {phone_number}\n{message}')
         return False
-    from twilio.rest import Client  # noqa: E402
-    client = Client(sid, token)
-    client.messages.create(body=message, from_=from_number, to=phone_number)
-    return True
+    number = phone_number.lstrip('+')
+    resp = requests.post(
+        'https://portal.bulkgate.com/api/2.0/advanced/transactional',
+        json={
+            'application_id': app_id,
+            'application_token': app_token,
+            'number': [number],
+            'text': message,
+            'country': 'cz',
+            'channel': {
+                'sms': {
+                    'sender_id': 'gSystem',
+                },
+            },
+        },
+        timeout=15,
+    )
+    if resp.ok:
+        return True
+    print(f'[SMS] BulkGate error for {phone_number}: {resp.status_code} {resp.text}')
+    return False
 
 
 def send_weather_sms_for_etapa(etapa_number):
@@ -2859,7 +2875,7 @@ def admin_sms_send(etapa_number):
     if sent > 0:
         flash(f'SMS odeslána {sent} příjemcům.', 'success')
     else:
-        flash('Žádné SMS nebyly odeslány. Zkontrolujte nastavení etapy a Twilio.', 'error')
+        flash('Žádné SMS nebyly odeslány. Zkontrolujte nastavení etapy a BulkGate.', 'error')
     return redirect(url_for('admin_sms'))
 
 
