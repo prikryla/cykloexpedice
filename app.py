@@ -715,31 +715,32 @@ def compose_weather_sms(etapa, weather_start, weather_end):
 
 
 def send_sms(phone_number, message):
-    app_id = os.environ.get('BULKGATE_APP_ID')
-    app_token = os.environ.get('BULKGATE_APP_TOKEN')
-    if not all([app_id, app_token]):
+    api_key = os.environ.get('VONAGE_API_KEY')
+    api_secret = os.environ.get('VONAGE_API_SECRET')
+    sender = os.environ.get('VONAGE_SENDER', 'Cykloexp')
+    if not all([api_key, api_secret]):
         print(f'[SMS STUB] To: {phone_number}\n{message}')
         return False
     number = phone_number.lstrip('+')
     resp = requests.post(
-        'https://portal.bulkgate.com/api/2.0/advanced/transactional',
-        json={
-            'application_id': app_id,
-            'application_token': app_token,
-            'number': [number],
+        'https://rest.nexmo.com/sms/json',
+        data={
+            'api_key': api_key,
+            'api_secret': api_secret,
+            'from': sender,
+            'to': number,
             'text': message,
-            'country': 'cz',
-            'channel': {
-                'sms': {
-                    'sender_id': 'gSystem',
-                },
-            },
         },
         timeout=15,
     )
     if resp.ok:
-        return True
-    print(f'[SMS] BulkGate error for {phone_number}: {resp.status_code} {resp.text}')
+        data = resp.json()
+        status = data.get('messages', [{}])[0].get('status')
+        if status == '0':
+            return True
+        print(f'[SMS] Vonage error for {phone_number}: {data}')
+    else:
+        print(f'[SMS] Vonage HTTP error for {phone_number}: {resp.status_code} {resp.text}')
     return False
 
 
@@ -2875,7 +2876,7 @@ def admin_sms_send(etapa_number):
     if sent > 0:
         flash(f'SMS odeslána {sent} příjemcům.', 'success')
     else:
-        flash('Žádné SMS nebyly odeslány. Zkontrolujte nastavení etapy a BulkGate.', 'error')
+        flash('Žádné SMS nebyly odeslány. Zkontrolujte nastavení etapy a Vonage.', 'error')
     return redirect(url_for('admin_sms'))
 
 
