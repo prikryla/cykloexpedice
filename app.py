@@ -2961,7 +2961,7 @@ def _schedule_payment_checks():
 
 if not os.environ.get('TESTING'):
     init_db()
-    _schedule_weather_sms()
+    # _schedule_weather_sms()  # disabled – sending manually for now
     _schedule_payment_checks()
 
 
