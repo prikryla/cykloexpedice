@@ -2474,18 +2474,20 @@ class TestGetWeatherForecast:
         mock_geo.json.return_value = {'results': [{'latitude': 49.59, 'longitude': 17.25}]}
         hourly_times = [f'{date_str}T{h:02d}:00' for h in range(24)]
         hourly_temps = [12, 11, 10, 10, 11, 13, 15, 17, 19, 21, 23, 24, 25, 25, 24, 23, 21, 20, 18, 16, 15, 14, 13, 12]
+        hourly_codes = [3, 3, 61, 61, 3, 3, 2, 2, 1, 1, 0, 0, 0, 0, 1, 1, 2, 2, 2, 3, 3, 3, 3, 3]
+        hourly_precip = [40, 50, 70, 65, 30, 20, 10, 10, 5, 5, 0, 0, 0, 0, 5, 5, 10, 10, 15, 20, 25, 30, 30, 30]
         mock_weather = MagicMock()
         mock_weather.json.return_value = {
             'daily': {
                 'time': [date_str],
                 'temperature_2m_max': [25],
                 'temperature_2m_min': [10],
-                'weather_code': [2],
-                'precipitation_probability_max': [35],
             },
             'hourly': {
                 'time': hourly_times,
                 'temperature_2m': hourly_temps,
+                'weather_code': hourly_codes,
+                'precipitation_probability': hourly_precip,
             },
         }
         return mock_geo, mock_weather
@@ -2499,7 +2501,7 @@ class TestGetWeatherForecast:
             assert result['city'] == 'Olomouc'
             assert result['temp_avg'] == 21.7
             assert result['weather_code'] == 2
-            assert result['precip_prob'] == 35
+            assert result['precip_prob'] == 15
 
     def test_geocode_fails(self):
         from app import get_weather_forecast
@@ -2619,18 +2621,20 @@ class TestSendWeatherSmsForEtapa:
         today = datetime.now().strftime('%Y-%m-%d')
         hourly_times = [f'{today}T{h:02d}:00' for h in range(24)]
         hourly_temps = [12, 11, 10, 10, 11, 13, 15, 17, 19, 21, 23, 24, 25, 25, 24, 23, 21, 20, 18, 16, 15, 14, 13, 12]
+        hourly_codes = [0] * 24
+        hourly_precip = [5] * 24
         mock_weather = MagicMock()
         mock_weather.json.return_value = {
             'daily': {
                 'time': [today],
                 'temperature_2m_max': [25],
                 'temperature_2m_min': [10],
-                'weather_code': [0],
-                'precipitation_probability_max': [5],
             },
             'hourly': {
                 'time': hourly_times,
                 'temperature_2m': hourly_temps,
+                'weather_code': hourly_codes,
+                'precipitation_probability': hourly_precip,
             },
         }
         with patch('app.requests.get', side_effect=[mock_geo, mock_weather, mock_geo, mock_weather]):
@@ -2698,18 +2702,20 @@ class TestAdminSmsPage:
         today = datetime.now().strftime('%Y-%m-%d')
         hourly_times = [f'{today}T{h:02d}:00' for h in range(24)]
         hourly_temps = [12, 11, 10, 10, 11, 13, 15, 17, 19, 21, 23, 24, 25, 25, 24, 23, 21, 20, 18, 16, 15, 14, 13, 12]
+        hourly_codes = [0] * 24
+        hourly_precip = [5] * 24
         mock_weather = MagicMock()
         mock_weather.json.return_value = {
             'daily': {
                 'time': [today],
                 'temperature_2m_max': [25],
                 'temperature_2m_min': [10],
-                'weather_code': [0],
-                'precipitation_probability_max': [5],
             },
             'hourly': {
                 'time': hourly_times,
                 'temperature_2m': hourly_temps,
+                'weather_code': hourly_codes,
+                'precipitation_probability': hourly_precip,
             },
         }
         with patch('app.requests.get', side_effect=[mock_geo, mock_weather, mock_geo, mock_weather]):

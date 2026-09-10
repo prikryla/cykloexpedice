@@ -635,8 +635,8 @@ def get_weather_forecast(city_name, date_str):
         'https://api.open-meteo.com/v1/forecast',
         params={
             'latitude': lat, 'longitude': lon,
-            'daily': 'temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code',
-            'hourly': 'temperature_2m',
+            'daily': 'temperature_2m_max,temperature_2m_min',
+            'hourly': 'temperature_2m,weather_code,precipitation_probability',
             'timezone': 'Europe/Prague',
         },
         timeout=10,
@@ -650,18 +650,30 @@ def get_weather_forecast(city_name, date_str):
     hourly = data.get('hourly', {})
     hourly_times = hourly.get('time', [])
     hourly_temps = hourly.get('temperature_2m', [])
+    hourly_codes = hourly.get('weather_code', [])
+    hourly_precip = hourly.get('precipitation_probability', [])
     day_temps = []
-    for ht, temp in zip(hourly_times, hourly_temps):
-        if ht.startswith(date_str) and temp is not None:
-            hour = int(ht[11:13])
-            if 7 <= hour <= 18:
-                day_temps.append(temp)
+    day_codes = []
+    day_precip = []
+    for i, ht in enumerate(hourly_times):
+        if not ht.startswith(date_str):
+            continue
+        hour = int(ht[11:13])
+        if 7 <= hour <= 18:
+            if i < len(hourly_temps) and hourly_temps[i] is not None:
+                day_temps.append(hourly_temps[i])
+            if i < len(hourly_codes) and hourly_codes[i] is not None:
+                day_codes.append(hourly_codes[i])
+            if i < len(hourly_precip) and hourly_precip[i] is not None:
+                day_precip.append(hourly_precip[i])
     temp_avg = round(sum(day_temps) / len(day_temps), 1) if day_temps else (daily['temperature_2m_max'][idx] + daily['temperature_2m_min'][idx]) / 2
+    weather_code = max(day_codes, key=lambda c: WMO_SEVERITY.get(c, 0)) if day_codes else 0
+    precip_prob = max(day_precip) if day_precip else 0
     return {
         'city': city_name,
         'temp_avg': temp_avg,
-        'weather_code': daily['weather_code'][idx],
-        'precip_prob': daily['precipitation_probability_max'][idx],
+        'weather_code': weather_code,
+        'precip_prob': precip_prob,
     }
 
 
@@ -2929,7 +2941,7 @@ def _schedule_weather_sms():
             date_part = e['date'].split('(')[0].strip()
             try:
                 run_date = datetime.strptime(date_part, '%d.%m.%Y').replace(
-                    hour=7, minute=0, second=0, tzinfo=ZoneInfo('Europe/Prague'),
+                    hour=7, minute=15, second=0, tzinfo=ZoneInfo('Europe/Prague'),
                 )
             except ValueError:
                 continue
@@ -2961,7 +2973,7 @@ def _schedule_payment_checks():
 
 if not os.environ.get('TESTING'):
     init_db()
-    # _schedule_weather_sms()  # disabled – sending manually for now
+    _schedule_weather_sms()
     _schedule_payment_checks()
 
 
